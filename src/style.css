@@ -1,0 +1,344 @@
+:root {
+  --tube-red-brown: #b80606;
+  --tube-warm-gold: #c58a3a;
+  --gold: #f4d487;
+  --gold-deep: #c99b4d;
+  --red-deep: #7f0703;
+  --red-soft: #b5140c;
+  --paper: #ffe5b5;
+  --ink: #fff7d8;
+  font: 16px/1.45 "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+  color: var(--ink);
+  background: #210402;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+button {
+  font: inherit;
+}
+
+#app {
+  min-height: 100svh;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.home-page {
+  min-height: 100svh;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  background:
+    radial-gradient(circle at 50% 20%, rgba(213, 35, 19, 0.35), transparent 42%),
+    #230201;
+}
+
+.home-stage {
+  position: relative;
+  width: min(100%, 430px);
+  aspect-ratio: 1242 / 2208;
+  overflow: hidden;
+  padding: 35px 22px 24px;
+  text-align: center;
+  background-color: #9f0904;
+  background-position: center top;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  box-shadow: 0 0 42px rgba(0, 0, 0, 0.5);
+}
+
+.rule-entry {
+  position: absolute;
+  z-index: 4;
+  top: 40.5%;
+  right: 5.9%;
+  width: 8.2%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.rule-entry img,
+.lottery-tube img,
+.draw-button img {
+  display: block;
+  width: 100%;
+  height: auto;
+  pointer-events: none;
+}
+
+.lottery-shadow {
+  position: absolute;
+  top: 63.4%;
+  left: 53%;
+  z-index: 1;
+  width: 44%;
+  aspect-ratio: 760 / 320;
+  background:
+    radial-gradient(ellipse at 70% 58%, rgba(24, 0, 0, 0.58) 0 24%, rgba(77, 4, 0, 0.34) 43%, transparent 72%),
+    radial-gradient(ellipse at 34% 46%, rgba(213, 54, 22, 0.18) 0 24%, transparent 64%);
+  filter: blur(9px);
+  opacity: 0.78;
+  mix-blend-mode: multiply;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.lottery-tube {
+  position: absolute;
+  top: 37%;
+  left: 50%;
+  z-index: 2;
+  display: block;
+  width: 44%;
+  max-width: 300px;
+  overflow: visible;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  transform-origin: 50% 92%;
+  transform: translateX(-50%);
+  transition: transform 180ms ease;
+}
+
+.lottery-tube img {
+  position: relative;
+  z-index: 1;
+  filter: drop-shadow(11px 18px 16px rgba(34, 0, 0, 0.3)) saturate(1.02) contrast(0.98) brightness(1.02) sepia(0.02);
+}
+
+.lottery-tube::before,
+.lottery-tube::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  mask: url("/assets/home/element_lottery_box.png") center / contain no-repeat;
+  -webkit-mask: url("/assets/home/element_lottery_box.png") center / contain no-repeat;
+}
+
+.lottery-tube::before {
+  inset: -4% -5%;
+  z-index: 0;
+  background:
+    radial-gradient(circle at 25% 36%, color-mix(in srgb, var(--tube-warm-gold) 24%, transparent), transparent 34%),
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--tube-warm-gold) 18%, transparent) 0%,
+      color-mix(in srgb, var(--tube-red-brown) 10%, transparent) 48%,
+      rgba(44, 0, 0, 0.16) 100%
+    );
+  filter: blur(5px);
+  opacity: 0.62;
+  mix-blend-mode: soft-light;
+}
+
+.lottery-tube::after {
+  z-index: 2;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(255, 92, 52, 0.24) 0%,
+      rgba(214, 18, 8, 0.07) 44%,
+      rgba(48, 0, 0, 0.3) 100%
+    );
+  opacity: 0.78;
+  mix-blend-mode: soft-light;
+}
+
+.lottery-tube:active {
+  transform: translateX(-50%) rotate(-1.5deg) scale(0.985);
+}
+
+.draw-button {
+  position: absolute;
+  top: 82.5%;
+  left: 50%;
+  z-index: 3;
+  display: block;
+  width: 66%;
+  max-width: 390px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  transform: translateX(-50%);
+  transition: transform 180ms ease, filter 180ms ease;
+}
+
+.draw-button:active {
+  transform: translateX(-50%) translateY(2px) scale(0.985);
+  filter: brightness(0.98);
+}
+
+.chance-tip {
+  position: fixed;
+  z-index: 12;
+  left: 50%;
+  bottom: 118px;
+  width: min(320px, calc(100% - 48px));
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 999px;
+  color: #fff5cf;
+  background: rgba(38, 0, 0, 0.82);
+  transform: translateX(-50%);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.3);
+}
+
+.bottom-nav {
+  position: absolute;
+  z-index: 3;
+  left: 16px;
+  right: 16px;
+  bottom: 2.4%;
+  display: grid;
+  grid-template-columns: 1fr 1.35fr 1fr;
+  align-items: end;
+  gap: 6px;
+  color: var(--gold);
+  text-shadow: 0 1px 5px rgba(88, 0, 0, 0.55);
+}
+
+.bottom-nav button,
+.bottom-nav p {
+  min-width: 0;
+  margin: 0;
+  padding: 0 0 8px;
+  border: 0;
+  border-bottom: 2px solid var(--gold-deep);
+  color: var(--gold);
+  background: transparent;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.bottom-nav button {
+  cursor: pointer;
+}
+
+.bottom-nav p {
+  border-bottom-color: transparent;
+}
+
+.modal-mask {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(24, 0, 0, 0.56);
+}
+
+.share-dialog {
+  width: min(100%, 340px);
+  padding: 26px 22px 22px;
+  border: 1px solid rgba(255, 218, 139, 0.78);
+  border-radius: 8px;
+  color: var(--red-deep);
+  background: linear-gradient(180deg, #fff0c9, #ffd891);
+  box-shadow: 0 20px 56px rgba(31, 0, 0, 0.42);
+}
+
+.share-dialog h2 {
+  margin: 0 0 10px;
+  color: var(--red-deep);
+  font-size: 24px;
+  letter-spacing: 0;
+}
+
+.share-dialog p {
+  margin: 0 0 12px;
+  color: #8c1b10;
+}
+
+.share-dialog strong {
+  display: block;
+  margin: 0 0 18px;
+}
+
+.dialog-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.dialog-actions button,
+.placeholder-page button {
+  min-height: 42px;
+  border: 1px solid #b52c18;
+  border-radius: 8px;
+  color: #fff5d4;
+  background: linear-gradient(180deg, #c32015, #891004);
+  cursor: pointer;
+}
+
+.dialog-actions button + button {
+  color: #8b160b;
+  background: #fff2ca;
+}
+
+.placeholder-page {
+  min-height: 100svh;
+  display: grid;
+  place-content: center;
+  gap: 16px;
+  padding: 32px;
+  text-align: center;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 50% 20%, rgba(203, 33, 19, 0.42), transparent 44%),
+    #5d0502;
+}
+
+.placeholder-page h1,
+.placeholder-page p {
+  margin: 0;
+  letter-spacing: 0;
+}
+
+.placeholder-page h1 {
+  font-size: 24px;
+}
+
+@media (max-height: 760px) {
+  .home-stage {
+    padding-top: 22px;
+  }
+
+  .lottery-tube {
+    width: 43%;
+  }
+
+  .draw-button {
+    width: 62%;
+  }
+}
