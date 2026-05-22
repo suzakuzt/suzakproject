@@ -1,111 +1,112 @@
-# P1 首页前端接口检查
+# H5 前端总检查文档
 
-## 1. 当前涉及的页面 / 组件文件路径
+> 更新时间：2026-05-21  
+> 检查范围：当前 Vue H5 页面框架、页面文档、跳转状态、后端接口和最新业务规则。P5 已更新并实现为「手机号领券弹窗」。
 
-| 类型 | 路径 | 说明 |
+## 1. 当前项目框架
+
+| 类型 | 路径 | 当前状态 |
 | --- | --- | --- |
-| 应用入口 | `src/main.js` | 挂载 Vue 应用。 |
-| P1 页面与占位页 | `src/App.vue` | 当前 P1 首页、P2 占位页、活动规则占位页、P6 奖励占位页都在此文件内通过条件渲染实现。 |
-| P1 交互逻辑 | `src/composables/useP1Activity.js` | 管理当前页面状态、摇签次数、分享次数、弹窗状态、按钮点击逻辑。 |
-| P1 样式 | `src/style.css` | 首页布局、签筒分层、按钮、底部导航、弹窗与占位页样式。 |
-| 首页背景图 | `public/assets/home/bg_rank_success.png` | 1242 × 2208 首页背景，已包含标题区域。 |
-| 签筒图 | `public/assets/home/element_lottery_box.png` | 独立可点击 / 可动画签筒元素。 |
-| 立即摇签按钮图 | `public/assets/home/btn_draw_now.png` | 主 CTA 图片，文案为“立即摇签”。 |
-| 活动规则按钮图 | `public/assets/home/tag_activity_rules.png` | 右侧活动规则入口图片。 |
-| 测试文件 | `src/App.test.js` | 覆盖 P1 入口、mock 逻辑、资产命名、布局与签筒视觉约束。 |
+| 应用入口 | `src/main.js` | 挂载 Vue 应用 |
+| 页面结构 | `src/App.vue` | P1、P2、P4、P6、P7、P8 在同一文件中按 `currentPage` 渲染；P5 当前是 P4 内浮层 |
+| 业务状态 | `src/composables/useP1Activity.js` | 管理抽签、分享、页面切换、接口调用和埋点 |
+| 接口封装 | `src/api/activityApi.js` | 统一走同域 `/api` |
+| 样式 | `src/style.css` | 页面样式集中维护 |
+| 测试 | `src/App.test.js` | 覆盖页面展示和关键交互 |
+| 文档 | `docs/` | P1、P2、P4、P5、P6、P7、P8 均有文档和任务卡 |
 
-## 2. P1 当前页面路由
+当前项目尚未接入 `vue-router`，但浏览器 URL 已同步为 `/activity/...` 业务路径；旧 `?page=p*` 只保留早期截图兼容。
 
-当前项目没有接入 `vue-router`，浏览器 URL 不会随页面切换变化，仍停留在 `/`。
+## 2. 页面和文档覆盖
 
-当前通过 `currentPage` 本地状态模拟页面路由：
+| 业务页面 | 代码内部名 | 访问路径 | 文档路径 | 最新定位 |
+| --- | --- | --- | --- | --- |
+| P1 活动首页 | `home` | `/activity/home` | `docs/home/` | 入口页、抽签机会、分享入口 |
+| P2 抽签结果 | `p2` | `/activity/result` | `docs/p2/` | 今日考运签结果 |
+| P3 | 无 | 无 | 无 | 当前不实现 |
+| P4 AI 解签 | `p4` | `/activity/explain` | `docs/p4/` | AI 解签结果和福利入口 |
+| P5 手机号领券弹窗 | P4 内弹窗 | 无独立路由 | `docs/p5/` | 输入手机号后提交领券 |
+| P6 我的奖励 | `p6` | `/activity/rewards` | `docs/p6/` | 展示 5 张普通奖励 + 985 礼盒 |
+| P7 活动规则 | `rules` | `/activity/rules` | `docs/p7/` | 活动规则和企微二维码 |
+| P8 985 资格 | `p8` | `/activity/grand-prize` | `docs/p8/` | 大奖资格、编号、开奖状态 |
 
-| currentPage | 页面含义 | 当前实现 |
-| --- | --- | --- |
-| `home` | P1 首页 | 已实现视觉和基础交互。 |
-| `p2` | P2 摇签页 | 占位页。 |
-| `rules` | 活动规则页 | 占位页。 |
-| `rewards` | P6 我的奖励页 | 占位页。 |
+## 3. 跳转和按钮状态
 
-## 3. 每个按钮 / 点击区域的动作
-
-| 点击区域 | DOM / 方法 | 当前动作 | 备注 |
+| 入口 / 按钮 | 当前目标 | 是否真实路由 | 接口关系 |
 | --- | --- | --- | --- |
-| 立即摇签 | `.draw-button` → `handleDraw('button')` | 触发摇签入口；如果 `drawChance > 0`，切换到 `currentPage = 'p2'`；否则显示提示。 | 当前未消耗次数，只做进入 P2 的前置判断。 |
-| 签筒 | `.lottery-tube` → `handleDraw('tube')` | 与“立即摇签”同入口；如果 `drawChance > 0`，切换到 P2 占位页；否则显示提示。 | 签筒是独立按钮层，后续可接摇动动画。 |
-| 活动规则 | `.rule-entry` → `goRules()` | 调用 `trackEvent('rule_click')`，切换到 `currentPage = 'rules'`。 | 当前是活动规则占位页。 |
-| 我的奖励 | 底部导航按钮 → `goRewards()` | 调用 `trackEvent('my_reward_click')`，切换到 `currentPage = 'rewards'`。 | 当前是 P6 占位页。 |
-| 分享获取次数 | `[data-testid="share-entry"]` → `openShareGuide()` | 调用 `trackEvent('share_get_chance_click')`，打开分享引导弹窗。 | 当前为前端模拟弹窗。 |
+| P1 立即摇签 | `/activity/result` | 是 | `POST /api/draw/execute` |
+| P1 活动规则 | `/activity/rules` | 是 | `GET /api/activity/rules/detail` |
+| P1 我的奖励 | `/activity/rewards` | 是 | `GET /api/reward/center/detail` |
+| P1 分享获取次数 | 首页弹层/分享动作 | 否 | `POST /api/share/record` |
+| P2 问小璞 | `/activity/explain` | 是 | `GET /api/explain/detail` |
+| P4 领取专属福利 | 打开 P5 弹窗 | 否 | 不应立即调领券接口 |
+| P5 去领取 | 弹窗内提交手机号 | 否 | `POST /api/benefit/claim`，请求体含 `mobile` |
+| P5 提交成功 | 小程序券包页 / 领券中心 | 小程序内自动跳转 | action 带 `claim_token` / `claim_no`，不在 H5 停留成功态 |
+| P6 券类去领取 | 小程序券包页 | 小程序内跳转 | 使用后端 action |
+| P6 精选好物去看看 | 商品详情页 | 小程序内跳转 | 使用后端 action |
+| P6 再抽一次 | `/activity/home` | 是 | 回到首页 |
+| P6 活动规则 | `/activity/rules` | 是 | 进入 P7 |
+| P6 985 达标去使用 | `/activity/grand-prize` 或后端 action | 是 | 进入 P8/资格承接 |
+| P8 返回 | 上一页/P6 | 是 | 历史栈返回 |
 
-分享弹窗内还有两个临时动作：
+## 4. 最新业务规则基线
 
-| 点击区域 | 方法 | 当前动作 |
-| --- | --- | --- |
-| 模拟完成分享 | `completeShare()` | 如果 `shareRewardCount < 3`，则 `shareRewardCount += 1`，`drawChance += 1`，并触发 `trackEvent('share_chance_add_success')`。 |
-| 知道了 | `closeShareGuide()` | 关闭分享弹窗。 |
+1. 每个用户每日默认 1 次抽签机会。
+2. 用户完成抽签后，后端自动记录 1 天打卡/点亮。
+3. 每天最多点亮 1 天。
+4. 用户分享好友后，后端记录分享行为。
+5. 好友通过分享进入并完成抽签后，原用户增加 1 个助力人数。
+6. 每日通过分享最多获得 3 次额外抽签机会。
+7. 当天最多 4 次抽签机会：1 次默认 + 3 次分享额外机会。
+8. 分享 5 个好友，或累计打卡 7 天，任一满足即可解锁 985 和牛礼盒抽奖资格。
+9. 每次成功抽签都可以领取一次本次签文绑定的优惠券，同一用户可拥有多张优惠券，包括重复券码。
+10. 同一 `draw_id` 的福利只能领取一次；重复提交返回原领取结果。
+11. P4 点击「领取专属福利」只打开 P5 手机号领券弹窗。
+12. P5 必须输入手机号并点击「去领取」后，才调用 `POST /api/benefit/claim`。
+13. 领券成功后，后端保存手机号、脱敏手机号、`claim_no`、`claim_token` 和发券状态，并由 H5 自动触发小程序券包承接。
+14. P6 展示固定奖励位：10 元、20 元、30 元、9 折、7.5 折、985 礼盒。
+15. 未领取的普通奖励显示「未领取」，已领取显示「去领取」。
+16. P6 最多展示 6 张，985 礼盒永远在最后一个。
+17. 985 礼盒未达标显示「未达标」，达标后显示「去使用」。
+18. 优惠券点击「去领取」跳小程序券包页，跳转参数只带 `claim_token` / `claim_no`。
+19. 精选好物点击「去看看」跳商品详情页。
+20. P8 展示抽奖编号、开奖状态、企微二维码。
 
-## 4. 当前使用的 mock 数据字段
+## 5. 后端接口总览
 
-| 字段 / 常量 | 来源 | 默认值 | 说明 |
+| 页面 | 接口 | 触发时机 | 作用 |
 | --- | --- | --- | --- |
-| `initialChance` | `App.vue` props | `1` | 首页初始摇签机会。 |
-| `initialShareRewardCount` | `App.vue` props | `0` | 今日初始分享奖励次数。 |
-| `drawChance` | `useP1Activity` 本地 `ref` | `initialChance ?? 1` | 当前摇签机会数量。 |
-| `shareRewardCount` | `useP1Activity` 本地 `ref` | `initialShareRewardCount ?? 0` | 今日分享奖励次数。 |
-| `currentPage` | `useP1Activity` 本地 `ref` | `home` | 模拟当前页面。 |
-| `showShareGuide` | `useP1Activity` 本地 `ref` | `false` | 分享弹窗显示状态。 |
-| `tipMessage` | `useP1Activity` 本地 `ref` | 空字符串 | 无机会时提示文案。 |
-| `shareProgressText` | `computed` | `今日分享奖励 x/3` | 分享奖励进度文案。 |
-| `MAX_DAILY_SHARE_REWARDS` | `useP1Activity.js` 常量 | `3` | 每日分享最多增加 3 次摇签机会。 |
-| `NO_CHANCE_TIP` | `useP1Activity.js` 常量 | `今日机会已用完，分享可再得机会` | 无摇签机会时的提示。 |
+| P1 | `POST /api/h5/session/create` | 首次进入 | 创建/恢复活动 session |
+| P1 | `GET /api/activity/state` | 首页加载 | 获取抽签机会、分享次数、活动状态 |
+| P1/P2 | `POST /api/draw/execute` | 点击抽签 | 扣减机会、生成 `draw_id`、自动点亮 |
+| P2 | `GET /api/draw/result/detail` | 抽签结果页 | 获取签文结果 |
+| P2/P4 | `GET /api/explain/detail` | 问小璞后 | 获取 AI 解签、商品福利、领取状态 |
+| P5 | `POST /api/benefit/claim` | 输入手机号后点击去领取 | 领取本次 `draw_id` 绑定优惠券，保存手机号和 `claim_token` |
+| P5 | `GET /api/benefit/claim/result` | 领取结果补偿查询 | 获取领取结果和去使用动作 |
+| 小程序 | `GET /api/benefit/claim/resolve` | 小程序解析 token | 通过 `claim_token` 查领取记录 |
+| P1 | `POST /api/share/record` | 分享完成 | 记录分享行为并按上限增加机会 |
+| P6 | `GET /api/reward/center/detail` | 进入我的奖励 | 获取进度、奖励、985 状态、商品推荐 |
+| P7 | `GET /api/activity/rules/detail` | 进入活动规则 | 获取规则和企微二维码 |
 
-## 5. 后续需要对接的后端接口
+P5 固定券规则：优惠券在 `POST /api/draw/execute` 创建 draw 时已经由后端固定；P4/P5 前端只展示接口返回的当前 draw 固定券，不在打开弹窗时重掷。同一 `draw_id` 重复进入 P5 必须保持同一张券，重新抽签生成新 `draw_id` 才可能换券。
+| P8 | `GET /api/grand-prize/qualification/detail` | 进入大奖资格页 | 获取资格、编号、开奖状态 |
+| 全局 | `POST /api/tracking/event` | 曝光/点击/异常 | 埋点入库 |
 
-当前代码没有真实请求，以下接口为后续对接点。
+## 6. 当前 P5 覆盖结果
 
-| 接口 | 触发时机 | 当前替代逻辑 | 建议返回 / 处理重点 |
-| --- | --- | --- | --- |
-| `GET /api/activity/state` | P1 首页初始化 | 目前由 `initialChance`、`initialShareRewardCount` mock。 | 返回剩余摇签机会、今日分享奖励次数、活动状态、奖励状态、是否已抽签等首页状态。 |
-| `POST /api/draw/chance/check` | 点击“立即摇签”或签筒 | 目前只判断本地 `drawChance > 0`。 | 校验当前用户是否有摇签机会；成功后进入 P2；失败时返回无机会 / 活动异常等原因。 |
-| `POST /api/share/chance/add` | 原生分享完成后 | 目前点击“模拟完成分享”直接本地加次数。 | 分享完成后增加机会；每日最多增加 3 次，超过后允许分享但不增加机会。 |
-| `POST /api/tracking/event` | 页面点击 / 分享成功等事件 | 当前 `trackEvent()` 为空函数。 | 上报 `draw_entry_click`、`draw_tube_click`、`rule_click`、`my_reward_click`、`share_get_chance_click`、`share_chance_add_success` 等事件。 |
-
-## 6. 当前占位内容
-
-| 占位项 | 当前位置 | 当前表现 | 后续动作 |
-| --- | --- | --- | --- |
-| P2 摇签页 | `App.vue` 中 `currentPage === 'p2'` 分支 | 展示“P2 摇签动画页占位”。 | 接入摇签动画、真实抽签流程、抽签结果。 |
-| P6 我的奖励页 | `App.vue` 中 `else` 分支 | 展示“P6 我的奖励页占位”。 | 接入我的考运进度、奖励信息、资格状态。 |
-| 活动规则页 | `App.vue` 中 `currentPage === 'rules'` 分支 | 展示“活动规则页占位”。 | 接入活动规则独立页面或真实路由。 |
-| 分享引导弹窗 | `App.vue` 中 `showShareGuide` 分支 | 展示前端模拟弹窗和“模拟完成分享”按钮。 | 接入真实分享面板、分享海报或端能力回调。 |
-
-## 7. 当前写死的数据或文案
-
-当前仍有写死数据 / 文案，分为确认固定项和后续应替换项。
-
-确认固定项：
-
-| 内容 | 位置 | 说明 |
+| 模块 | 当前代码 | 最新要求 |
 | --- | --- | --- |
-| `立即摇签` | `App.vue` | 主按钮文案按需求固定。 |
-| `我的摇签机会 ${drawChance}次` | `App.vue` | 底部机会展示格式固定，数字来自本地状态。 |
-| 首页资产文件名 | `App.vue` / `style.css` | `bg_rank_success.png`、`element_lottery_box.png`、`btn_draw_now.png`、`tag_activity_rules.png`。 |
+| P4 福利按钮 | 只打开 P5 手机号弹窗 | 已符合 |
+| P5 展示 | 手机号输入弹窗 + 提交成功后自动跳小程序券包 | 已符合 |
+| P5 提交 | 前端校验 11 位手机号后请求后端 | 已符合 |
+| 领券接口 | `mobile` 必传，后端二次校验 | 已符合 |
+| 数据库 | SQLite/MySQL 已同步补字段和索引 | 已符合 |
+| 埋点 | 已补曝光、输入聚焦、提交、校验失败，禁止手机号明文 | 已符合 |
+| 测试 | 已改为 P4 打开 P5，P5 提交成功后自动承接券包 | 已符合 |
 
-后续应替换 / 接口化：
+## 7. 文档一致性结论
 
-| 内容 | 当前值 | 后续建议 |
-| --- | --- | --- |
-| 初始摇签机会 | `initialChance = 1` | 接 `GET /api/activity/state`。 |
-| 今日分享奖励次数 | `initialShareRewardCount = 0` | 接 `GET /api/activity/state`。 |
-| 分享奖励上限 | `MAX_DAILY_SHARE_REWARDS = 3` | 如后端可配置，改由接口返回。 |
-| 无机会提示 | `今日机会已用完，分享可再得机会` | 可保留前端兜底，优先使用后端错误文案。 |
-| 分享弹窗文案 | `分享完成后可获得 1 次摇签机会，每日最多奖励 3 次。` | 后续按真实分享规则或配置返回。 |
-| 分享完成动作 | `模拟完成分享` | 后续替换为原生分享回调或分享海报流程。 |
-| 占位页文案 | P2 / P6 / 活动规则占位文案 | 后续真实页面开发后删除。 |
-| 埋点事件名 | 本地字符串 | 后续需与埋点平台事件表最终确认。 |
-
-## 检查结论
-
-当前 P1 首页前端视觉和基础交互链路已完成，但还没有真实后端接口、真实路由、真实分享能力、P2 / P6 / 活动规则完整页面。
-
-未发现会阻塞当前 P1 首页展示的问题；发现的待办均属于预期占位或 mock：页面路由为本地状态模拟、分享为弹窗模拟、摇签机会为本地 mock、埋点函数为空实现。
+1. P1、P2、P4、P5、P6、P7、P8 文档均存在。
+2. P5 文档已更新为手机号领券口径。
+3. 总览、接口、数据库文档已按 P5 新口径更新为已覆盖状态。
+4. 下一步重点是小程序券包页用 `claim_token` 承接的联调确认。

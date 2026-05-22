@@ -12,6 +12,16 @@ dist
 dist-ssr
 tmp
 *.local
+.env
+backend/.env
+*.db
+*.sqlite
+*.sqlite3
+*.pyc
+__pycache__/
+backend/data/*.bak-*
+tmp_*.png
+tmp_*.jpg
 
 # Editor directories and files
 .vscode/*

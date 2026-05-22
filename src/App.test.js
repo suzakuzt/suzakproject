@@ -10,7 +10,11 @@ vi.mock('./components/HelloWorld.vue', () => ({
   },
 }))
 
-const mountHome = (props = {}) => mount(App, { props })
+const mountHome = (props = {}) => {
+  window.history.replaceState({}, '', '/activity/home')
+
+  return mount(App, { props })
+}
 const readSource = (relativePath) => readFileSync(resolve(process.cwd(), relativePath), 'utf8')
 
 const readPngSize = (relativePath) => {
@@ -38,10 +42,10 @@ describe('P1 activity home', () => {
     const wrapper = mountHome()
     const html = wrapper.html()
 
-    expect(html).toContain('bg_rank_success.png')
+    expect(html).toContain('bg_rank_success.jpg')
     expect(html).toContain('element_lottery_box.png')
     expect(html).toContain('btn_draw_now.png')
-    expect(html).toContain('tag_activity_rules.png')
+    expect(html).toContain('btn_activity_rules.png')
     expect(html).toContain('lottery-shadow')
     expect(html).not.toContain('element_lottery_shadow.png')
     expect(html).not.toContain('home-bg-p1.png')
@@ -56,51 +60,54 @@ describe('P1 activity home', () => {
 
   it('uses the latest button and lottery-box image assets', () => {
     expect(readPngSize('public/assets/home/btn_draw_now.png')).toEqual({
-      width: 1960,
-      height: 431,
+      width: 1450,
+      height: 386,
     })
     expect(readPngSize('public/assets/home/element_lottery_box.png')).toEqual({
-      width: 651,
-      height: 985,
+      width: 1254,
+      height: 1254,
     })
   })
 
   it('keeps the P1 home layout relaxed around the lottery area', () => {
     const css = readSource('src/style.css')
 
-    expect(css).toMatch(/\.rule-entry\s*{[^}]*top:\s*40\.5%;/s)
-    expect(css).toMatch(/\.lottery-shadow\s*{[^}]*top:\s*63\.4%;[^}]*left:\s*53%;[^}]*width:\s*44%;[^}]*radial-gradient\(ellipse at 70% 58%/s)
-    expect(css).toMatch(/\.lottery-tube\s*{[^}]*top:\s*37%;[^}]*width:\s*44%;/s)
-    expect(css).toMatch(/\.lottery-tube img\s*{[^}]*filter:\s*drop-shadow\(11px 18px 16px rgba\(34,\s*0,\s*0,\s*0\.3\)\) saturate\(1\.02\) contrast\(0\.98\) brightness\(1\.02\) sepia\(0\.02\);/s)
-    expect(css).toMatch(/\.draw-button\s*{[^}]*top:\s*82\.5%;[^}]*width:\s*66%;/s)
+    expect(css).toMatch(/\.rule-entry\s*{[^}]*top:\s*1\.9%;/s)
+    expect(css).toMatch(/\.lottery-shadow\s*{[^}]*top:\s*66\.6%;[^}]*left:\s*53%;[^}]*width:\s*50%;[^}]*radial-gradient\(ellipse at 70% 58%/s)
+    expect(css).toMatch(/\.lottery-tube\s*{[^}]*top:\s*39\.5%;[^}]*width:\s*68%;/s)
+    expect(css).toMatch(/\.lottery-tube img\s*{[^}]*filter:\s*none;/s)
+    expect(css).toMatch(/\.draw-button\s*{[^}]*top:\s*81\.4%;[^}]*width:\s*70%;/s)
     expect(css).toMatch(/\.bottom-nav\s*{[^}]*bottom:\s*2\.4%;/s)
   })
 
-  it('keeps color treatment scoped to the lottery tube area', () => {
+  it('keeps the current home palette and avoids decorative stage overlays', () => {
     const css = readSource('src/style.css')
 
-    expect(css).toContain('--tube-red-brown: #b80606;')
-    expect(css).toContain('--tube-warm-gold: #c58a3a;')
+    expect(css).toContain('--theme-primary: #b80606;')
+    expect(css).toContain('--gold-deep: #c99b4d;')
     expect(css).not.toContain('.home-stage::before')
-    expect(css).toMatch(/\.lottery-tube::before\s*{[^}]*background:[^}]*var\(--tube-red-brown\)/s)
-    expect(css).toMatch(/\.lottery-tube::before\s*{[^}]*background:[^}]*var\(--tube-warm-gold\)/s)
-    expect(css).toMatch(/\.lottery-tube::after\s*{[^}]*linear-gradient\(\s*90deg,[^}]*rgba\(255,\s*92,\s*52,\s*0\.24\)[^}]*rgba\(48,\s*0,\s*0,\s*0\.3\)[^}]*mix-blend-mode:\s*soft-light;/s)
+    expect(css).toMatch(/\.home-stage\s*{[^}]*background-size:\s*100% 100%;/s)
+    expect(css).toMatch(/\.lottery-shadow\s*{[^}]*mix-blend-mode:\s*multiply;/s)
   })
 
   it('routes to the P2 placeholder when the primary draw button has chance', async () => {
     const wrapper = mountHome()
 
     await wrapper.get('[data-testid="draw-button"]').trigger('click')
+    await wrapper.get('.draw-animation-video').trigger('ended')
 
-    expect(wrapper.text()).toContain('P2 摇签动画页占位')
+    expect(wrapper.text()).toContain('六月考运签')
+    expect(wrapper.text()).toContain('问小璞')
   })
 
   it('uses the same draw entrance when clicking the lottery tube', async () => {
     const wrapper = mountHome()
 
     await wrapper.get('[data-testid="lottery-tube"]').trigger('click')
+    await wrapper.get('.draw-animation-video').trigger('ended')
 
-    expect(wrapper.text()).toContain('P2 摇签动画页占位')
+    expect(wrapper.text()).toContain('六月考运签')
+    expect(wrapper.text()).toContain('问小璞')
   })
 
   it('shows the no-chance tip instead of routing when draw chance is zero', async () => {
@@ -109,7 +116,7 @@ describe('P1 activity home', () => {
     await wrapper.get('[data-testid="draw-button"]').trigger('click')
 
     expect(wrapper.text()).toContain('今日机会已用完，分享可再得机会')
-    expect(wrapper.text()).not.toContain('P2 摇签动画页占位')
+    expect(wrapper.text()).not.toContain('六月考运签')
   })
 
   it('opens the share guide and only rewards the first three shares each day', async () => {

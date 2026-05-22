@@ -1,0 +1,211 @@
+from typing import Any
+
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+
+from .activity_service import (
+    DEFAULT_ACTIVITY_CODE,
+    ApiError,
+    claim_benefit,
+    create_session,
+    execute_draw,
+    get_activity_state,
+    get_claim_result,
+    get_explain_detail,
+    get_grand_prize_detail,
+    get_reward_center,
+    get_rules_detail,
+    record_share,
+    record_tracking_event,
+    randomize_benefit,
+    resolve_claim_by_token,
+)
+from .health import build_health_status
+
+
+app = FastAPI(
+    title="Gaokao H5 Activity API",
+    version="0.1.0",
+    description="Temporary backend API for the Gaokao H5 activity.",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+class SessionCreateRequest(BaseModel):
+    activity_code: str = DEFAULT_ACTIVITY_CODE
+    user_key: str | None = None
+    external_user_id: str | None = None
+    openid: str | None = None
+    unionid: str | None = None
+    nickname: str | None = None
+    avatar_url: str | None = None
+    source_page: str | None = None
+    source_channel: str | None = None
+    share_token: str | None = None
+
+
+class DrawExecuteRequest(BaseModel):
+    session_token: str
+    source: str | None = None
+
+
+class BenefitClaimRequest(BaseModel):
+    session_token: str
+    draw_id: int | None = None
+    reward_code: str | None = None
+    mobile: str | None = None
+    claim_channel: str | None = None
+
+
+class BenefitRandomizeRequest(BaseModel):
+    session_token: str
+    draw_id: int | None = None
+    exclude_reward_code: str | None = None
+
+
+class ShareRecordRequest(BaseModel):
+    session_token: str
+    share_channel: str | None = None
+
+
+class TrackingEventRequest(BaseModel):
+    session_token: str | None = None
+    activity_code: str | None = None
+    page_code: str | None = None
+    event_name: str
+    event_payload: dict[str, Any] = Field(default_factory=dict)
+    client_time: str | None = None
+
+
+def _handle_api_error(error: ApiError):
+    raise HTTPException(status_code=error.status_code, detail=error.message) from error
+
+
+@app.get("/api/health")
+def health_check():
+    return build_health_status()
+
+
+@app.post("/api/h5/session/create")
+def h5_session_create(request: SessionCreateRequest):
+    try:
+        return create_session(request.model_dump())
+    except ApiError as error:
+        _handle_api_error(error)
+
+
+@app.get("/api/activity/state")
+def activity_state(session_token: str = Query(...)):
+    try:
+        return get_activity_state(session_token)
+    except ApiError as error:
+        _handle_api_error(error)
+
+
+@app.post("/api/draw/execute")
+def draw_execute(request: DrawExecuteRequest):
+    try:
+        return execute_draw(request.model_dump())
+    except ApiError as error:
+        _handle_api_error(error)
+
+
+@app.get("/api/draw/result/detail")
+def draw_result_detail(session_token: str = Query(...), draw_id: int | None = None, result_code: str | None = None):
+    try:
+        return get_explain_detail(session_token, draw_id, result_code)
+    except ApiError as error:
+        _handle_api_error(error)
+
+
+@app.get("/api/explain/detail")
+def explain_detail(session_token: str = Query(...), draw_id: int | None = None, result_code: str | None = None):
+    try:
+        return get_explain_detail(session_token, draw_id, result_code)
+    except ApiError as error:
+        _handle_api_error(error)
+
+
+@app.post("/api/benefit/claim")
+def benefit_claim(request: BenefitClaimRequest):
+    try:
+        return claim_benefit(request.model_dump())
+    except ApiError as error:
+        _handle_api_error(error)
+
+
+@app.post("/api/benefit/randomize")
+def benefit_randomize(request: BenefitRandomizeRequest):
+    try:
+        return randomize_benefit(request.model_dump())
+    except ApiError as error:
+        _handle_api_error(error)
+
+
+@app.get("/api/benefit/claim/result")
+def benefit_claim_result(session_token: str = Query(...), claim_no: str = Query(...)):
+    try:
+        return get_claim_result(session_token, claim_no)
+    except ApiError as error:
+        _handle_api_error(error)
+
+
+@app.get("/api/benefit/claim/resolve")
+def benefit_claim_resolve(claim_token: str = Query(...)):
+    try:
+        return resolve_claim_by_token(claim_token)
+    except ApiError as error:
+        _handle_api_error(error)
+
+
+@app.post("/api/share/record")
+def share_record(request: ShareRecordRequest):
+    try:
+        return record_share(request.model_dump())
+    except ApiError as error:
+        _handle_api_error(error)
+
+
+@app.get("/api/reward/center/detail")
+def reward_center_detail(session_token: str = Query(...)):
+    try:
+        return get_reward_center(session_token)
+    except ApiError as error:
+        _handle_api_error(error)
+
+
+@app.get("/api/grand-prize/qualification/detail")
+def grand_prize_qualification_detail(session_token: str = Query(...)):
+    try:
+        return get_grand_prize_detail(session_token)
+    except ApiError as error:
+        _handle_api_error(error)
+
+
+@app.get("/api/activity/rules/detail")
+def activity_rules_detail(activity_code: str = Query(DEFAULT_ACTIVITY_CODE)):
+    try:
+        return get_rules_detail(activity_code)
+    except ApiError as error:
+        _handle_api_error(error)
+
+
+@app.post("/api/tracking/event")
+def tracking_event(request: TrackingEventRequest):
+    try:
+        return record_tracking_event(request.model_dump())
+    except ApiError as error:
+        _handle_api_error(error)
