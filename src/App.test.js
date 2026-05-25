@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import App from './App.vue'
+import { MINI_PROGRAM_COUPON_PAGE, goMiniProgramCouponPage } from './utils/miniProgramBridge'
 import { installRuntimeMonitor } from './utils/runtimeMonitor'
 
 vi.mock('./components/HelloWorld.vue', () => ({
@@ -37,9 +38,49 @@ const readPngSize = (relativePath) => {
   }
 }
 
+const flushPromises = async () => {
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  await new Promise((resolve) => setTimeout(resolve, 0))
+}
+
 describe('P1 activity home', () => {
   beforeEach(() => {
     window.sessionStorage.clear()
+    delete window.wx
+  })
+
+  it('loads the WeChat JS-SDK for mini-program web-view navigation', () => {
+    const html = readSource('index.html')
+
+    expect(html).toContain('https://res.wx.qq.com/open/js/jweixin-1.6.0.js')
+  })
+
+  it('navigates to the mini-program coupon page only when the web-view bridge exists', () => {
+    const navigateTo = vi.fn()
+    window.wx = {
+      miniProgram: {
+        navigateTo,
+      },
+    }
+
+    expect(goMiniProgramCouponPage()).toBe(true)
+    expect(navigateTo).toHaveBeenCalledWith({ url: MINI_PROGRAM_COUPON_PAGE })
+
+    delete window.wx
+    expect(goMiniProgramCouponPage()).toBe(false)
+  })
+
+  it('uses the real mini-program my-coupon page path for coupon targets', () => {
+    const files = [
+      'src/composables/useP1Activity.js',
+      'database/sqlite/002_seed_basic_mock_config.sql',
+      'database/mysql/002_seed_basic_mock_config.sql',
+    ]
+    const contents = files.map(readSource).join('\n')
+    const legacyCouponPage = ['/pages', `coupon${String.fromCharCode(45)}package`, 'index'].join('/')
+
+    expect(contents).toContain('/pages/my-coupon/index')
+    expect(contents).not.toContain(legacyCouponPage)
   })
 
   it('renders the confirmed P1 home copy with one default draw chance', () => {
@@ -48,9 +89,28 @@ describe('P1 activity home', () => {
     expect(wrapper.text()).toContain('立即摇签')
     expect(wrapper.text()).toContain('我的摇签机会 1次')
     expect(wrapper.text()).toContain('活动规则')
-    expect(wrapper.text()).toContain('我的奖励')
+    expect(wrapper.get('[data-testid="home-rewards-entry"]').text()).toBe('每日打卡')
     expect(wrapper.text()).toContain('分享获取次数')
     expect(wrapper.text()).not.toContain('今日已摇签')
+  })
+
+  it('renders five restrained golden reward barrage items on home', () => {
+    const wrapper = mountHome()
+    const items = wrapper.findAll('[data-testid="home-barrage-item"]')
+    const rewardPattern = /^\d{3}\*{5}\d{3}\u62bd\u4e2d\d+(?:\.\d+)?(?:\u5143|\u6298)\u4f18\u60e0\u5238$/
+    const realCarrierPrefixes = new Set(['130', '138', '158', '186', '189'])
+    const prefixes = items.map((item) => item.text().slice(0, 3))
+    const rewardTypes = items.map((item) =>
+      item.text().replace(/^\d{3}\*{5}\d{3}\u62bd\u4e2d/, '').replace(/\u4f18\u60e0\u5238$/, ''),
+    )
+
+    expect(wrapper.get('[data-testid="home-barrage"]').attributes('aria-hidden')).toBe('true')
+    expect(items).toHaveLength(5)
+    expect(items[0].text()).toBe('138*****438\u62bd\u4e2d10\u5143\u4f18\u60e0\u5238')
+    expect(prefixes.every((prefix) => realCarrierPrefixes.has(prefix))).toBe(true)
+    expect(rewardTypes).toEqual(['10\u5143', '20\u5143', '30\u5143', '9\u6298', '7.5\u6298'])
+    expect(items.map((item) => item.text())).not.toContain('177*****219\u62bd\u4e2d7.5\u6298\u4f18\u60e0\u5238')
+    expect(items.every((item) => rewardPattern.test(item.text()))).toBe(true)
   })
 
   it('uses rebuilt P1 design assets instead of legacy sliced filenames', () => {
@@ -84,25 +144,19 @@ describe('P1 activity home', () => {
     })
   })
 
-  it('shows the Prime Cuts brand logo on home, result, and rewards pages', () => {
-    expect(readPngSize('public/assets/common/element_prime_cuts_logo.png')).toEqual({
-      width: 960,
-      height: 958,
-    })
-
+  it('shows the text wordmark on home and removes Prime Cuts stamp images from other pages', () => {
     const home = mountHome()
     const result = mountResult()
     const rewards = mount(App, { props: { initialPage: 'p6' } })
 
-    expect(home.get('[data-testid="brand-logo-home"]').attributes('src')).toContain(
-      'assets/common/element_prime_cuts_logo.png',
-    )
-    expect(result.get('[data-testid="brand-logo-result"]').attributes('src')).toContain(
-      'assets/common/element_prime_cuts_logo.png',
-    )
-    expect(rewards.get('[data-testid="brand-logo-rewards"]').attributes('src')).toContain(
-      'assets/common/element_prime_cuts_logo.png',
-    )
+    const wordmark = home.get('[data-testid="brand-wordmark-home"]')
+    expect(home.find('[data-testid="brand-logo-home"]').exists()).toBe(false)
+    expect(wordmark.text()).not.toContain('1870s')
+    expect(wordmark.text()).toContain('Prime')
+    expect(wordmark.text()).toContain('Cuts')
+    expect(home.get('.home-brand-wordmark-sub').text()).toBe('\u749e\u83b1\u7267')
+    expect(result.find('[data-testid="brand-logo-result"]').exists()).toBe(false)
+    expect(rewards.find('[data-testid="brand-logo-rewards"]').exists()).toBe(false)
   })
 
   it('imports the P4-1 unified result design assets', () => {
@@ -157,10 +211,21 @@ describe('P1 activity home', () => {
     expect(css).toMatch(/\.lottery-tube img\s*{[^}]*filter:\s*none;/s)
     expect(css).toMatch(/\.draw-button\s*{[^}]*top:\s*81\.4%;[^}]*width:\s*70%;/s)
     expect(css).toMatch(/\.bottom-nav\s*{[^}]*bottom:\s*2\.4%;/s)
-    expect(css).toMatch(/\.brand-logo\s*{[^}]*position:\s*absolute;[^}]*object-fit:\s*contain;/s)
-    expect(css).toMatch(/\.home-brand-logo\s*{[^}]*top:\s*3\.8%;[^}]*left:\s*4\.8%;[^}]*width:\s*14\.6%;/s)
-    expect(css).toMatch(/\.p2-brand-logo\s*{[^}]*top:\s*8\.8%;[^}]*left:\s*6\.2%;[^}]*width:\s*10\.2%;/s)
-    expect(css).toMatch(/\.p6-brand-logo\s*{[^}]*top:\s*12%;[^}]*left:\s*4\.8%;[^}]*width:\s*10\.8%;/s)
+    expect(css).not.toContain('.brand-logo')
+    expect(css).toMatch(/\.home-brand-wordmark\s*{[^}]*width:\s*18\.5%;/s)
+    expect(css).toMatch(/\.home-brand-wordmark\s*{[^}]*background:\s*transparent;/s)
+    expect(css).toMatch(/\.home-brand-wordmark\s*{[^}]*border:\s*0;/s)
+    expect(css).toMatch(/\.home-barrage\s*{[^}]*top:\s*28\.2%;[^}]*height:\s*12\.8%;/s)
+    expect(css).toMatch(/\.home-barrage-item\s*{[^}]*color:\s*#f8d982;[^}]*animation:\s*home-barrage-scroll/s)
+    expect(css).toMatch(/@keyframes home-barrage-scroll[\s\S]*left:\s*-86%;[\s\S]*left:\s*106%;/)
+    expect(css).toContain('font-size: clamp(8px, 2.4vw, 11px);')
+    expect(css).toMatch(/\.home-brand-wordmark-main\s*{[^}]*font-family:\s*Georgia/s)
+    expect(css).toMatch(/\.home-brand-wordmark-main\s*{[^}]*color:\s*#fff;/s)
+    expect(css).toMatch(/\.home-brand-wordmark-sub\s*{[^}]*font-family:\s*"Microsoft YaHei"/s)
+    expect(css).toMatch(/\.home-brand-wordmark-sub\s*{[^}]*font-size:\s*clamp\(8px,\s*2\.4vw,\s*11px\);/s)
+    expect(css).toMatch(/\.home-brand-wordmark-sub\s*{[^}]*color:\s*#fff;/s)
+    expect(css).not.toContain('.p2-brand-logo')
+    expect(css).not.toContain('.p6-brand-logo')
   })
 
   it('keeps the current home palette and avoids decorative stage overlays', () => {
@@ -239,10 +304,23 @@ describe('P1 activity home', () => {
     expect(wrapper.get('[data-testid="p2-ai-panel"]').text()).not.toContain('INLINE_AI_COPY')
     expect(wrapper.get('[data-testid="p2-claim-benefit"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="share-poster"]').exists()).toBe(true)
-    expect(wrapper.get('[data-testid="share-poster"]').text()).toBe('保存海报分享')
+    expect(wrapper.get('[data-testid="share-poster"]').text()).toBe('分享得好礼')
   })
 
-  it('opens a simple share poster with sign copy and QR code but without the product image', async () => {
+  it('keeps the result-page claim button visible after claim and removes the daily check-in entry', () => {
+    const wrapper = mountResult({
+      initialP4Detail: {
+        benefit: {
+          claimStatus: 'claimed',
+        },
+      },
+    })
+
+    expect(wrapper.get('[data-testid="p2-claim-benefit"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="p4-rewards-entry"]').exists()).toBe(false)
+  })
+
+  it('opens the activity share poster with QR code but without the product image', async () => {
     const wrapper = mountResult({
       initialP2Result: {
         goodFor: 'LEFT_COPY',
@@ -259,8 +337,9 @@ describe('P1 activity home', () => {
     await wrapper.get('[data-testid="share-poster"]').trigger('click')
 
     const poster = wrapper.get('[data-testid="p2-poster-dialog"]')
-    expect(poster.text()).toContain('LEFT_COPY')
-    expect(poster.text()).toContain('RIGHT_COPY')
+    expect(poster.find('[data-testid="p2-share-activity-poster"]').attributes('src')).toContain(
+      'share_activity_poster.png',
+    )
     expect(poster.find('[data-testid="p2-poster-qrcode"]').attributes('src')).toContain('qrcode_wechat_group.png')
     expect(poster.find('[data-testid="p2-product-image"]').exists()).toBe(false)
     expect(poster.html()).not.toContain('product_flat_iron_steak.png')
@@ -271,6 +350,71 @@ describe('P1 activity home', () => {
     await poster.get('[data-testid="close-p2-panel"]').trigger('click')
 
     expect(wrapper.find('[data-testid="p2-poster-dialog"]').exists()).toBe(false)
+  })
+
+  it('saves the home share poster through the poster API and local download flow', async () => {
+    const imageDataUrl =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII='
+    const savePoster = vi.fn().mockResolvedValue({
+      success: true,
+      saved: true,
+      poster_id: 'home_poster_test',
+      poster_url: '/api/poster/image/home_poster_test',
+    })
+    const createSession = vi.fn().mockResolvedValue({ session_token: 'sess_home' })
+    const trackEvent = vi.fn().mockResolvedValue({ success: true })
+    const canvasContext = {
+      drawImage: vi.fn(),
+      fillRect: vi.fn(),
+      fillText: vi.fn(),
+      restore: vi.fn(),
+      save: vi.fn(),
+      scale: vi.fn(),
+    }
+    const originalImage = globalThis.Image
+    const originalToBlob = HTMLCanvasElement.prototype.toBlob
+    const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(canvasContext)
+    const toDataUrlSpy = vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue(imageDataUrl)
+    const anchorClickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    const createObjectUrlSpy = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:home-poster')
+    const revokeObjectUrlSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+    HTMLCanvasElement.prototype.toBlob = vi.fn((callback) => callback(new Blob(['png'], { type: 'image/png' })))
+    globalThis.Image = class {
+      set src(value) {
+        this._src = value
+        setTimeout(() => this.onload?.(), 0)
+      }
+    }
+    const wrapper = mountHome({
+      apiClient: { createSession, savePoster, trackEvent },
+    })
+
+    await wrapper.get('[data-testid="share-entry"]').trigger('click')
+    await wrapper.get('[data-testid="save-home-share-poster"]').trigger('click')
+    await flushPromises()
+
+    expect(savePoster).toHaveBeenCalledWith(
+      expect.objectContaining({
+        session_token: 'sess_home',
+        page_code: 'home',
+        poster_type: 'home_share',
+        image_data_url: imageDataUrl,
+      }),
+    )
+    expect(anchorClickSpy).toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="home-share-poster-save-message"]').text()).toContain('海报已保存')
+    expect(wrapper.get('[data-testid="home-share-generated-preview"]').attributes('src')).toBe(
+      '/api/poster/image/home_poster_test',
+    )
+
+    wrapper.unmount()
+    globalThis.Image = originalImage
+    HTMLCanvasElement.prototype.toBlob = originalToBlob
+    getContextSpy.mockRestore()
+    toDataUrlSpy.mockRestore()
+    anchorClickSpy.mockRestore()
+    createObjectUrlSpy.mockRestore()
+    revokeObjectUrlSpy.mockRestore()
   })
 
   it('saves the poster image through the backend poster API before sharing', async () => {
@@ -417,11 +561,10 @@ describe('P1 activity home', () => {
     expect(css).toMatch(/\.p2-ai-panel \.p4-thinking-line\s*{[^}]*font-size:\s*13px;/s)
     expect(css).toMatch(/\.p2-claim-button\s*{[^}]*bottom:\s*4\.2%;[^}]*width:\s*60%;/s)
     expect(css).toMatch(/\.p2-poster-button\s*{[^}]*width:\s*40%;[^}]*border-bottom:\s*2px solid #d8b25f;[^}]*background:\s*transparent;/s)
-    expect(css).toMatch(/\.p2-poster-card\s*{[^}]*border:\s*2px solid #080000;/s)
-    expect(css).toMatch(/\.p2-poster-qrcode\s*{[^}]*border:\s*1px solid #080000;/s)
-    expect(css).toMatch(/\.p2-poster-lines\s*{[^}]*background:\s*linear-gradient\(90deg,\s*transparent,\s*rgba\(133,\s*62,\s*24,\s*0\.07\),\s*transparent\);/s)
-    expect(css).not.toMatch(/\.p2-poster-lines\s*{[^}]*border-top:/s)
-    expect(css).not.toMatch(/\.p2-poster-lines\s*{[^}]*border-bottom:/s)
+    expect(css).toMatch(/\.p2-poster-dialog\s*{[^}]*width:\s*min\(84vw,\s*332px\);/s)
+    expect(css).toMatch(/\.p2-poster-card\s*{[^}]*background:\s*#a10805;[^}]*overflow:\s*hidden;/s)
+    expect(css).toMatch(/\.activity-share-poster-image\s*{[^}]*aspect-ratio:\s*941\s*\/\s*1672;/s)
+    expect(css).toMatch(/\.activity-share-poster-qrcode\s*{[^}]*left:\s*15%;[^}]*top:\s*84\.7%;[^}]*width:\s*21\.2%;/s)
     expect(css).toMatch(/@media \(max-height:\s*720px\)\s*{[^}]*\.p2-stage\s*{[^}]*width:\s*min\(100vw,\s*405px\);/s)
     expect(css).toMatch(/@media \(max-height:\s*680px\)\s*{[^}]*\.p2-stage\s*{[^}]*width:\s*min\(100vw,\s*382px\);/s)
     expect(css).toMatch(/@media \(max-height:\s*640px\)\s*{[^}]*\.p2-stage\s*{[^}]*width:\s*min\(100vw,\s*360px\);/s)
@@ -459,6 +602,118 @@ describe('P1 activity home', () => {
     expect(popup.text()).not.toMatch(/[璇緭鎵満鍙]/)
     expect(wrapper.get('[data-testid="p2-ai-scroll"]').classes()).not.toContain('is-open')
     expect(wrapper.find('[data-testid="p2-ai-result"]').exists()).toBe(false)
+  })
+
+  it('redirects to the mini-program my-coupon page after a successful mobile claim', async () => {
+    const navigateTo = vi.fn()
+    window.wx = {
+      miniProgram: {
+        navigateTo,
+      },
+    }
+    const createSession = vi.fn().mockResolvedValue({ session_token: 'sess_test' })
+    const claimBenefit = vi.fn().mockResolvedValue({
+      claimStatus: 'claimed',
+      receiver_mobile_masked: '138****8000',
+      reward: {
+        couponId: 'coupon_10',
+        couponName: '10元券',
+        couponStatus: 'unused',
+      },
+      action: {
+        type: 'mini_program_coupon_package',
+        target: '/unused-backend-target',
+      },
+    })
+    const wrapper = mountResult({
+      apiClient: {
+        createSession,
+        claimBenefit,
+        trackEvent: vi.fn().mockResolvedValue({}),
+      },
+      initialP4Detail: {
+        benefit: {
+          rewardCode: 'coupon_10',
+        },
+      },
+    })
+
+    await wrapper.get('[data-testid="p2-claim-benefit"]').trigger('click')
+    await wrapper.get('[data-testid="p5-mobile-input"]').setValue('13800138000')
+    await wrapper.get('[data-testid="p5-submit-claim"]').trigger('submit')
+    await flushPromises()
+
+    expect(claimBenefit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        session_token: 'sess_test',
+        mobile: '13800138000',
+        claim_channel: 'h5',
+      }),
+    )
+    expect(navigateTo).toHaveBeenCalledWith({ url: MINI_PROGRAM_COUPON_PAGE })
+  })
+
+  it('shows a successful claim hint instead of redirecting outside mini-program web-view', async () => {
+    const createSession = vi.fn().mockResolvedValue({ session_token: 'sess_test' })
+    const claimBenefit = vi.fn().mockResolvedValue({
+      claimStatus: 'claimed',
+      receiver_mobile_masked: '138****8000',
+      reward: {
+        couponId: 'coupon_10',
+        couponName: '10元券',
+        couponStatus: 'unused',
+      },
+    })
+    const wrapper = mountResult({
+      apiClient: {
+        createSession,
+        claimBenefit,
+        trackEvent: vi.fn().mockResolvedValue({}),
+      },
+      initialP4Detail: {
+        benefit: {
+          rewardCode: 'coupon_10',
+        },
+      },
+    })
+
+    await wrapper.get('[data-testid="p2-claim-benefit"]').trigger('click')
+    await wrapper.get('[data-testid="p5-mobile-input"]').setValue('13800138000')
+    await wrapper.get('[data-testid="p5-submit-claim"]').trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('领取成功，请前往小程序我的优惠券查看')
+  })
+
+  it('does not redirect to the coupon page when mobile claim fails', async () => {
+    const navigateTo = vi.fn()
+    window.wx = {
+      miniProgram: {
+        navigateTo,
+      },
+    }
+    const createSession = vi.fn().mockResolvedValue({ session_token: 'sess_test' })
+    const claimBenefit = vi.fn().mockRejectedValue(new Error('手机号已领取过'))
+    const wrapper = mountResult({
+      apiClient: {
+        createSession,
+        claimBenefit,
+        trackEvent: vi.fn().mockResolvedValue({}),
+      },
+      initialP4Detail: {
+        benefit: {
+          rewardCode: 'coupon_10',
+        },
+      },
+    })
+
+    await wrapper.get('[data-testid="p2-claim-benefit"]').trigger('click')
+    await wrapper.get('[data-testid="p5-mobile-input"]').setValue('13800138000')
+    await wrapper.get('[data-testid="p5-submit-claim"]').trigger('submit')
+    await flushPromises()
+
+    expect(navigateTo).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('手机号已领取过')
   })
 
   it('reuses the combined result card when opening the legacy P4 route directly', () => {
@@ -513,6 +768,13 @@ describe('P1 activity home', () => {
     })
   })
 
+  it('uses the enterprise WeChat QR asset on the P8 prize page', () => {
+    const p8Qrcode = readFileSync(resolve(process.cwd(), 'public/assets/p8/qrcode_grand_prize_wechat.png'))
+    const enterpriseWechatQrcode = readFileSync(resolve(process.cwd(), 'public/assets/p7/qrcode_wechat_group.png'))
+
+    expect(p8Qrcode.equals(enterpriseWechatQrcode)).toBe(true)
+  })
+
   it('keeps P8 QR code, status, and WeChat layers when grand-prize qualification is locked', () => {
     const wrapper = mount(App, {
       props: {
@@ -550,6 +812,80 @@ describe('P1 activity home', () => {
     expect(wrapper.text()).toContain('LOCKED_STATUS')
     expect(wrapper.text()).toContain('LOCKED_PUBLICITY_DESC')
     expect(wrapper.text()).toContain('LOCKED_WECHAT_BENEFIT')
+  })
+
+  it('renders the P8 locked qualification copy without mojibake', () => {
+    const wrapper = mount(App, {
+      props: {
+        initialPage: 'p8',
+        initialP8Prize: {
+          qualification: {
+            qualified: false,
+            qualify_desc: '分享5个好友，或累计点亮7天，赢取985和牛礼盒抽奖资格！',
+            prize_title: '985 和牛礼盒',
+            lottery_no: '',
+          },
+        },
+      },
+    })
+    const text = wrapper.text()
+
+    expect(text).toContain('大奖资格暂未解锁')
+    expect(text).toContain('返回我的奖励')
+    expect(text).not.toMatch(/澶у|杩斿|閹|闁|鎴戠殑濂栧姳/)
+  })
+
+  it('keeps the P8 lottery number slot empty when no lottery number exists', () => {
+    const wrapper = mount(App, {
+      props: {
+        initialPage: 'p8',
+        initialP8Prize: {
+          qualification: {
+            qualified: false,
+            qualify_desc: '分享5个好友，或累计点亮7天，赢取985和牛礼盒抽奖资格！',
+            prize_title: '985 和牛礼盒',
+            lottery_no: '',
+          },
+        },
+      },
+    })
+
+    expect(wrapper.find('.p8-status-lottery-no').text()).toBe('')
+    expect(wrapper.text()).not.toContain('抽奖编号生成中，请稍后刷新')
+  })
+
+  it('keeps P8 fallback prize copy free of mojibake at the source', () => {
+    const source = readSource('src/composables/useP1Activity.js')
+    const initialP8Defaults = source.slice(
+      source.indexOf('const DEFAULT_P8_PRIZE = {'),
+      source.indexOf('Object.assign(DEFAULT_P7_RULES'),
+    )
+    const p8Overrides = source.slice(
+      source.indexOf('Object.assign(DEFAULT_P8_PRIZE'),
+      source.indexOf('const normalizeP2Result'),
+    )
+    const p8Source = `${initialP8Defaults}\n${p8Overrides}`
+
+    expect(p8Source).toContain('牛气大奖资格已确认')
+    expect(p8Source).not.toMatch(/閹|闁|缁|濞|娑|鐗|瀵|鏉|顨|绱|鍩\?|鐗\?|\?\?\?/)
+  })
+
+  it('keeps P7 fallback rules copy free of mojibake at the source', () => {
+    const source = readSource('src/composables/useP1Activity.js')
+    const initialP7Defaults = source.slice(
+      source.indexOf('const DEFAULT_P7_RULES = {'),
+      source.indexOf('const DEFAULT_P8_PRIZE = {'),
+    )
+    const p7Overrides = source.slice(
+      source.indexOf('Object.assign(DEFAULT_P7_RULES'),
+      source.indexOf('Object.assign(DEFAULT_P8_PRIZE'),
+    )
+    const p7Source = `${initialP7Defaults}\n${p7Overrides}`
+
+    expect(p7Source).toContain('活动规则')
+    expect(p7Source).toContain('用户每日默认获得 1 次抽签机会。')
+    expect(p7Source).toContain('扫码添加企微')
+    expect(p7Source).not.toMatch(/闁|閹|濞|娑|杩斿|\?\?\?/)
   })
 
   it('keeps rewards page buttons flat without extra shadows', () => {
@@ -640,19 +976,23 @@ describe('P1 activity home', () => {
     )
   })
 
-  it('opens the share guide and only rewards the first three shares each day', async () => {
+  it('opens the home share poster with close and save controls only', async () => {
     const wrapper = mountHome({ initialChance: 0 })
 
     await wrapper.get('[data-testid="share-entry"]').trigger('click')
     expect(wrapper.text()).toContain('分享引导')
+    expect(wrapper.get('[data-testid="home-share-activity-poster"]').find('.activity-share-poster-image').attributes('src')).toContain(
+      'share_activity_poster.png',
+    )
+    expect(wrapper.get('[data-testid="home-share-qrcode"]').attributes('src')).toContain('qrcode_wechat_group.png')
+    expect(wrapper.get('[data-testid="save-home-share-poster"]').text()).toBe('保存')
+    expect(wrapper.get('[data-testid="close-share-guide"]').attributes('aria-label')).toBe('关闭')
+    expect(wrapper.find('[data-testid="share-complete"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('模拟完成分享')
+    expect(wrapper.text()).not.toContain('知道了')
 
-    const shareComplete = wrapper.get('[data-testid="share-complete"]')
-    await shareComplete.trigger('click')
-    await shareComplete.trigger('click')
-    await shareComplete.trigger('click')
-    await shareComplete.trigger('click')
+    await wrapper.get('[data-testid="close-share-guide"]').trigger('click')
 
-    expect(wrapper.text()).toContain('我的摇签机会 3次')
-    expect(wrapper.text()).toContain('今日分享奖励 3/3')
+    expect(wrapper.find('[data-testid="home-share-poster-dialog"]').exists()).toBe(false)
   })
 })

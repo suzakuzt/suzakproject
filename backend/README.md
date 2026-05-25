@@ -34,7 +34,7 @@ http://127.0.0.1:8000/docs
 | `GET /api/health` | 健康检查 |
 | `POST /api/h5/session/create` | 创建活动会话，绑定用户和分享来源 |
 | `GET /api/activity/state` | 获取每日机会和大奖进度 |
-| `POST /api/draw/execute` | 抽签、扣机会、固定签文和券、处理好友助力 |
+| `POST /api/draw/execute` | 抽签、扣机会、随机签文和券、处理好友助力 |
 | `GET /api/draw/result/detail` | 结果页补偿查询 |
 | `GET /api/explain/detail` | AI 解签、商品和福利详情 |
 | `POST /api/benefit/randomize` | 旧入口兼容，返回当前 draw 固定券 |
@@ -77,3 +77,20 @@ DEEPSEEK_MAX_TOKENS=220
 python -m unittest discover backend.tests -v
 python scripts/prepare_mysql.py
 ```
+
+## 6. Hermes coupon issuing
+
+`POST /api/benefit/claim` issues the coupon through the backend-only Hermes client before returning success to H5.
+Do not put portal credentials, `ut`, `X-Token`, or cookies in frontend code.
+
+Production requires these environment variables for portal login. Coupon issuing parameters are stored per `reward_code` in `coupon_issue_config`; edit that table when Hermes ids, ref ids, titles, dates, or face values differ by coupon.
+
+```text
+PORTAL_BASE_URL=https://portal.kpcc-tech.com
+PORTAL_USERNAME=<portal backend account>
+PORTAL_PASSWORD=<portal backend password>
+```
+
+`HERMES_*` environment variables are only a legacy/default fallback for direct client usage. The activity claim flow reads the matching row from `coupon_issue_config` and passes that config to Hermes.
+
+Do not commit `.env` files. The Hermes client only logs task id, masked mobile, `successNum`, and `failNum`; it must not log `PORTAL_PASSWORD`, `ut`, or `X-Token`.

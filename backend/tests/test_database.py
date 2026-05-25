@@ -29,7 +29,8 @@ class DatabaseConnectionTests(unittest.TestCase):
         self.assertIn("activity_config", names)
         self.assertIn("user_daily_state", names)
         self.assertIn("draw_record", names)
-        self.assertEqual(len(names), 16)
+        self.assertIn("coupon_issue_config", names)
+        self.assertEqual(len(names), 17)
 
     def test_fetch_one_returns_dictionary_or_none(self):
         with connection() as conn:
@@ -63,7 +64,7 @@ class ActivityRepositoryTests(unittest.TestCase):
                 "asset_count": 8,
                 "product_count": 4,
                 "reward_count": 7,
-                "draw_result_count": 1,
+                "draw_result_count": 5,
             },
         )
 
@@ -73,7 +74,7 @@ class HealthStatusTests(unittest.TestCase):
         status = build_health_status("gaokao_lucky_sign_2026")
 
         self.assertEqual(status["database"]["connected"], True)
-        self.assertEqual(status["database"]["table_count"], 16)
+        self.assertEqual(status["database"]["table_count"], 17)
         self.assertEqual(status["activity"]["activity_code"], "gaokao_lucky_sign_2026")
         self.assertEqual(status["activity"]["daily_default_chance"], 1)
         self.assertEqual(status["seed_counts"]["reward_count"], 7)

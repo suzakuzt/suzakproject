@@ -1,5 +1,6 @@
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { activityApi } from '../api/activityApi'
+import { MINI_PROGRAM_COUPON_PAGE, goMiniProgramCouponPage } from '../utils/miniProgramBridge'
 
 const MAX_DAILY_SHARE_REWARDS = 3
 const TIP_VISIBLE_MS = 3000
@@ -24,6 +25,7 @@ const PREVIEW_PAGE_ALIASES = {
 }
 const PREVIEW_PAGES = new Set(['home', 'p2', 'p4', 'p6', 'p8', 'rules'])
 const NO_CHANCE_TIP = '今日机会已用完，分享可再得机会'
+const CLAIM_SUCCESS_COUPON_FALLBACK_MESSAGE = '领取成功，请前往小程序我的优惠券查看'
 const SESSION_USER_KEY_STORAGE = 'gaokao_h5_user_key'
 const P4_THINKING_STEP_MS = 620
 const P4_THINKING_MIN_VISIBLE_MS = 1700
@@ -133,7 +135,7 @@ const DEFAULT_P6_CENTER = {
       button_text: '去领取',
       action: {
         type: 'mini_program_coupon_package',
-        target: '/pages/coupon-package/index',
+        target: MINI_PROGRAM_COUPON_PAGE,
       },
     },
     {
@@ -146,7 +148,7 @@ const DEFAULT_P6_CENTER = {
       button_text: '去领取',
       action: {
         type: 'mini_program_coupon_package',
-        target: '/pages/coupon-package/index',
+        target: MINI_PROGRAM_COUPON_PAGE,
       },
     },
     {
@@ -159,7 +161,7 @@ const DEFAULT_P6_CENTER = {
       button_text: '去领取',
       action: {
         type: 'mini_program_coupon_package',
-        target: '/pages/coupon-package/index',
+        target: MINI_PROGRAM_COUPON_PAGE,
       },
     },
     {
@@ -172,7 +174,7 @@ const DEFAULT_P6_CENTER = {
       button_text: '去领取',
       action: {
         type: 'mini_program_coupon_package',
-        target: '/pages/coupon-package/index',
+        target: MINI_PROGRAM_COUPON_PAGE,
       },
     },
     {
@@ -185,7 +187,7 @@ const DEFAULT_P6_CENTER = {
       button_text: '去领取',
       action: {
         type: 'mini_program_coupon_package',
-        target: '/pages/coupon-package/index',
+        target: MINI_PROGRAM_COUPON_PAGE,
       },
     },
   ],
@@ -229,140 +231,140 @@ const DEFAULT_P6_CENTER = {
 }
 const DEFAULT_P7_RULES = {
   activity_id: 'gaokao_lucky_sign_2026',
-  page_title: '濞茶濮╃憴鍕灟',
-  subtitle: '娑撯偓娑撻箖鐝稉?璺?閸忣厽婀€閻楁稒鐨甸崝鐘宠ˉ缁?',
+  page_title: '活动规则',
+  subtitle: '一举高中 · 六月牛气加油签',
   rules: [
     {
       rule_no: 1,
-      content: '濮ｅ繋姹夊В蹇旀）姒涙顓?1 濞嗏剝濞婄粵鐐簚娴兼熬绱?',
+      content: '用户每日默认获得 1 次抽签机会。',
     },
     {
       rule_no: 2,
-      content: '閸掑棔闊╂總钘夊几閸欏倷绗岄獮璺虹暚閹存劖濞婄粵鎾呯礉閸樼喓鏁ら幋宄邦杻閸?1 濞嗏€冲И閸旀稖绻樻惔锔肩幢',
+      content: '完成抽签后，可根据结果领取对应优惠券福利。',
     },
     {
       rule_no: 3,
-      content: '濮ｅ繑妫╅柅姘崇箖閸掑棔闊╅張鈧径姘冲箯瀵?3 濞嗭繝顤傛径鏍ㄦ簚娴兼熬绱?',
+      content: '分享活动并带来好友完成抽签，可获得额外抽签机会。',
     },
     {
       rule_no: 4,
-      content: '濮ｅ繑妫╃€瑰本鍨氶幎鐣岊劮閸氬函绱濋懛顏勫З閻愰€涘瘨 1 婢垛晞绻樻惔锔肩幢',
+      content: '每日分享奖励最多 3 次，超出后不再增加抽签机会。',
     },
     {
       rule_no: 5,
-      content: '缁鳖垵顓搁悙閫涘瘨 7 婢垛晜鍨ㄩ柇鈧拠?5 娴ｅ秴銈介崣瀣剁礉閸欘垵袙闁?985 閸滃瞼澧扮粈鑲╂磪閹惰棄顨涚挧鍕壐閿?',
+      content: '分享 5 个好友或累计点亮 7 天，可解锁 985 和牛礼盒抽奖资格。',
     },
     {
       rule_no: 6,
-      content: '婵傛牕鎼ч弫浼村櫤閺堝妾洪敍灞藉徔娴ｆ挷浜掑ú璇插З妞ょ敻娼伴崗顒傘仛娑撳搫鍣敍?',
+      content: '优惠券发放以手机号绑定和后台发券结果为准。',
     },
     {
       rule_no: 7,
-      content: '閺堫剚妞块崝銊よ礋婵炲彉绠版禍鎺戝З娑撳海顨㈢粋蹇旀た閸旑煉绱濇稉宥勫敩鐞涖劋鎹㈡担鏇熷灇缂佲晠顣╁ù瀣ㄢ偓?',
+      content: '活动最终解释权在法律允许范围内归活动主办方所有。',
     },
   ],
   wechat_group: {
     qrcode_url: 'qrcode_wechat_group.png',
-    title: '閹殿偆鐖滃ǎ璇插娴间礁浜?',
-    desc: '鏉╂稓鍏㈤崣顖濆箯閸欐牗妞块崝銊﹀絹闁辨帇鈧椒绗撶仦鐐扮喘閹姴寮风粋蹇撳焺闁氨鐓?',
+    title: '扫码添加企微',
+    desc: '进群可获取活动提醒、专属优惠及福利通知',
   },
 }
 const DEFAULT_P8_PRIZE = {
   activity_id: 'gaokao_lucky_sign_2026',
   hero: {
-    title: '鏉╃偟鐢婚幍鎾冲幢7婢垛€恘婢堆冾殯鐠у嫭鐗稿鑼缎掗柨?',
-    subtitle: '閻楁稒鐨垫径褍顨涚挧鍕壐瀹歌尙鈥樼拋?',
+    title: '连续打卡7天\n大奖资格已解锁',
+    subtitle: '牛气大奖资格已确认',
   },
   qualification: {
     qualified: true,
     qualify_type: 'checkin_7_days',
-    qualify_desc: '閹厼鏋╂担鐘插嚒鐎瑰本鍨?婢垛晜澧﹂崡?',
-    prize_title: '985閸滃瞼澧扮粈鑲╂磪閹惰棄顨涚挧鍕壐',
+    qualify_desc: '恭喜你已完成7天打卡',
+    prize_title: '985和牛礼盒抽奖资格',
     lottery_no: 'KY202406-0038',
   },
   benefits: [
     {
       id: 'coupon_50',
-      title: '50閸忓啫鍩?',
-      desc: '娴间礁浜曟０鍡楀絿',
+      title: '50元券',
+      desc: '企微领取',
     },
     {
       id: 'gift_qualification',
-      title: '缁€鑲╂磪鐠у嫭鐗?',
-      desc: '瀹歌尪袙闁?',
+      title: '礼盒资格',
+      desc: '已解锁',
     },
     {
       id: 'draw_notice',
-      title: '瀵偓婵傛牗褰侀柋?',
-      desc: '娴间礁浜曢柅姘辩叀',
+      title: '开奖提醒',
+      desc: '企微通知',
     },
   ],
   lottery_status: {
     status: 'pending',
-    status_text: '瀵板懎绱戞總?',
-    draw_time_desc: '濞茶濮╃紒鎾存将閸?娑擃亜浼愭担婊勬）閸愬懐绮烘稉鈧鈧總?',
-    notice: '娑擃厼顨涚紓鏍у娇鐏忓棗婀張顒勩€夐棃顫瑢娴间礁浜曠粈鍓у參閸氬本顒為崗顒傘仛',
-    publicity_title: '娑擃厼顨涢崗顒傘仛',
-    publicity_desc: '瀵偓婵傛牕鎮楃亸鍡楁躬濮濄倖娲块弬?',
+    status_text: '待开奖',
+    draw_time_desc: '活动结束后 3 个工作日内统一开奖',
+    notice: '中奖编号将在本页面与企微社群同步公示',
+    publicity_title: '中奖公示',
+    publicity_desc: '开奖后将在此更新',
   },
   wechat_group: {
     qrcode_url: 'qrcode_grand_prize_wechat.png',
     qrcode_id: 'grand_prize_wechat_default',
-    title: '閹殿偆鐖滃ǎ璇插娴间礁浜曟０鍡楀絿',
-    benefits: ['领取优惠券', '查看抽奖资格', '接收开奖通知'],
+    title: '扫码添加企微领取',
+    benefits: ['领取50元券', '接收礼盒开奖通知', '查看中奖结果'],
   },
 }
 
 
 Object.assign(DEFAULT_P7_RULES, {
-  page_title: '娲诲姩瑙勫垯',
-  subtitle: '涓€涓鹃珮涓?路 鍏湀鐗涙皵鍔犳补绛?',
+  page_title: '活动规则',
+  subtitle: '一举高中 · 六月牛气加油签',
   rules: [
-    { rule_no: 1, content: '?????? 1 ??????' },
-    { rule_no: 2, content: '????????????' },
-    { rule_no: 3, content: '??????????' },
-    { rule_no: 4, content: '?????????????' },
-    { rule_no: 5, content: '????????????' },
-    { rule_no: 6, content: '?????????' },
-    { rule_no: 7, content: '?????????' },
+    { rule_no: 1, content: '用户每日默认获得 1 次抽签机会。' },
+    { rule_no: 2, content: '完成抽签后，可根据结果领取对应优惠券福利。' },
+    { rule_no: 3, content: '分享活动并带来好友完成抽签，可获得额外抽签机会。' },
+    { rule_no: 4, content: '每日分享奖励最多 3 次，超出后不再增加抽签机会。' },
+    { rule_no: 5, content: '分享 5 个好友或累计点亮 7 天，可解锁 985 和牛礼盒抽奖资格。' },
+    { rule_no: 6, content: '优惠券发放以手机号绑定和后台发券结果为准。' },
+    { rule_no: 7, content: '活动最终解释权在法律允许范围内归活动主办方所有。' },
   ],
   wechat_group: {
     qrcode_url: 'qrcode_wechat_group.png',
-    title: '鎵爜娣诲姞浼佸井',
-    desc: '杩涚兢鍙幏鍙栨椿鍔ㄦ彁閱掋€佷笓灞炰紭鎯犲強绂忓埄閫氱煡',
+    title: '扫码添加企微',
+    desc: '进群可获取活动提醒、专属优惠及福利通知',
   },
 })
 
 Object.assign(DEFAULT_P8_PRIZE, {
   hero: {
-    title: '杩炵画鎵撳崱7澶‐n澶у璧勬牸宸茶В閿?',
-    subtitle: '鐗涙皵澶у璧勬牸宸茬‘璁?',
+    title: '连续打卡7天\n大奖资格已解锁',
+    subtitle: '牛气大奖资格已确认',
   },
   qualification: {
     qualified: true,
     qualify_type: 'checkin_7_days',
-    qualify_desc: '鎭枩浣犲凡瀹屾垚7澶╂墦鍗?',
-    prize_title: '985鍜岀墰绀肩洅鎶藉璧勬牸',
+    qualify_desc: '恭喜你已完成7天打卡',
+    prize_title: '985和牛礼盒抽奖资格',
     lottery_no: 'KY202406-0038',
   },
   benefits: [
-    { id: 'coupon_50', title: '50??', desc: '?????' },
-    { id: 'gift_qualification', title: '????', desc: '????' },
-    { id: 'draw_notice', title: '????', desc: '????' },
+    { id: 'coupon_50', title: '50元券', desc: '企微领取' },
+    { id: 'gift_qualification', title: '礼盒资格', desc: '已解锁' },
+    { id: 'draw_notice', title: '开奖提醒', desc: '企微通知' },
   ],
   lottery_status: {
     status: 'pending',
-    status_text: '寰呭紑濂?',
-    draw_time_desc: '娲诲姩缁撴潫鍚?涓伐浣滄棩鍐呯粺涓€寮€濂?',
-    notice: '涓缂栧彿灏嗗湪鏈〉闈笌浼佸井绀剧兢鍚屾鍏ず',
-    publicity_title: '涓鍏ず',
-    publicity_desc: '寮€濂栧悗灏嗗湪姝ゆ洿鏂?',
+    status_text: '待开奖',
+    draw_time_desc: '活动结束后 3 个工作日内统一开奖',
+    notice: '中奖编号将在本页面与企微社群同步公示',
+    publicity_title: '中奖公示',
+    publicity_desc: '开奖后将在此更新',
   },
   wechat_group: {
     qrcode_url: 'qrcode_grand_prize_wechat.png',
     qrcode_id: 'grand_prize_wechat_default',
-    title: '鎵爜娣诲姞浼佸井棰嗗彇',
-    benefits: ['棰嗗彇50鍏冨埜', '鎺ユ敹绀肩洅寮€濂栭€氱煡', '鏌ョ湅涓缁撴灉'],
+    title: '扫码添加企微领取',
+    benefits: ['领取50元券', '接收礼盒开奖通知', '查看中奖结果'],
   },
 })
 
@@ -704,6 +706,24 @@ const buildCanonicalSearch = () => {
   const value = params.toString()
 
   return value ? `?${value}` : ''
+}
+
+const getClaimErrorMessage = (error) => {
+  const rawMessage = error instanceof Error ? error.message : String(error || '')
+  if (!rawMessage) {
+    return '领取失败，请稍后重试'
+  }
+
+  try {
+    const parsed = JSON.parse(rawMessage)
+    if (typeof parsed?.detail === 'string' && parsed.detail) {
+      return parsed.detail
+    }
+  } catch {
+    // Plain API errors are already user-facing enough for this flow.
+  }
+
+  return rawMessage
 }
 
 const syncBrowserRoute = (page, { replace = false, preserveSearch = false } = {}) => {
@@ -1531,39 +1551,31 @@ export function useP1Activity(options = {}) {
     trackEvent('use_benefit_click', {
       trigger: 'auto_after_mobile_bind',
       claim_no: p5Result.value.claim_no ?? p5Result.value.claimNo,
-      action_type: p5Result.value.action?.type,
+      action_type: 'mini_program_coupon_package',
     })
 
     p5UseStatus.value = 'redirecting'
-    const redirected = runConfiguredAction(
-      p5Result.value.action,
-      p5UseMessage,
-      '\u624b\u673a\u53f7\u5df2\u4fdd\u5b58\uff0c\u9886\u5238\u5165\u53e3\u6682\u672a\u5f00\u653e\uff0c\u8bf7\u7a0d\u540e\u5230\u6211\u7684\u5956\u52b1\u67e5\u770b\u3002',
-    )
+    const redirected = goMiniProgramCouponPage()
     p5UseStatus.value = 'idle'
 
     if (redirected) {
-      const actionTarget = p5Result.value.action?.target
-      const redirectMessage =
-        actionTarget && !String(p5UseMessage.value || '').includes(actionTarget)
-          ? `\u624b\u673a\u53f7\u5df2\u4fdd\u5b58\uff0c\u6b63\u5728\u524d\u5f80\u5c0f\u7a0b\u5e8f\u9886\u5238\u4e2d\u5fc3\uff1a${actionTarget}`
-          : p5UseMessage.value || '\u624b\u673a\u53f7\u5df2\u4fdd\u5b58\uff0c\u6b63\u5728\u524d\u5f80\u5c0f\u7a0b\u5e8f\u9886\u5238\u4e2d\u5fc3\u3002'
-
       showP5ClaimSuccess.value = false
       p5MobileError.value = ''
       p5UseMessage.value = ''
-      showTimedP4ClaimMessage(redirectMessage)
+      showTimedP4ClaimMessage('领取成功，正在前往小程序我的优惠券')
       trackEvent('use_benefit_redirect_success', {
         trigger: 'auto_after_mobile_bind',
-        action_type: p5Result.value.action?.type,
+        action_type: 'mini_program_coupon_package',
+        target: MINI_PROGRAM_COUPON_PAGE,
       })
       return
     }
 
-    p5UseMessage.value = '\u624b\u673a\u53f7\u5df2\u4fdd\u5b58\uff0c\u9886\u5238\u5165\u53e3\u6682\u672a\u5f00\u653e\uff0c\u8bf7\u7a0d\u540e\u5230\u6211\u7684\u5956\u52b1\u67e5\u770b\u3002'
+    p5UseMessage.value = CLAIM_SUCCESS_COUPON_FALLBACK_MESSAGE
     trackEvent('use_benefit_redirect_fail', {
       trigger: 'auto_after_mobile_bind',
-      action_type: p5Result.value.action?.type,
+      action_type: 'mini_program_coupon_package',
+      target: MINI_PROGRAM_COUPON_PAGE,
     })
   }
 
@@ -1604,10 +1616,10 @@ export function useP1Activity(options = {}) {
         })
         markP5ClaimSuccess(result, mobile)
         redirectP5ClaimAfterMobileBind()
-      } catch {
+      } catch (error) {
         p4ClaimStatus.value = 'unclaimed'
         p5ClaimStatus.value = 'input'
-        p5UseMessage.value = '领取失败，请稍后重试'
+        p5UseMessage.value = getClaimErrorMessage(error)
         trackEvent('exclusive_benefit_claim_fail')
         trackEvent('benefit_claim_result_load_fail')
       }
@@ -1647,6 +1659,12 @@ export function useP1Activity(options = {}) {
     }
 
     const isMiniProgramAction = String(action.type ?? '').startsWith('mini_program')
+    if (action.type === 'mini_program_coupon_package') {
+      const redirected = goMiniProgramCouponPage()
+      messageRef.value = redirected ? '' : CLAIM_SUCCESS_COUPON_FALLBACK_MESSAGE
+      return redirected
+    }
+
     const miniProgramBridge = typeof window !== 'undefined' ? window.wx?.miniProgram : undefined
     if (isMiniProgramAction && typeof miniProgramBridge?.navigateTo === 'function') {
       miniProgramBridge.navigateTo({ url: action.target })
@@ -1680,7 +1698,7 @@ export function useP1Activity(options = {}) {
       return
     }
 
-    p5UseMessage.value = '\u624b\u673a\u53f7\u5df2\u4fdd\u5b58\uff0c\u9886\u5238\u5165\u53e3\u6682\u672a\u5f00\u653e\uff0c\u8bf7\u7a0d\u540e\u5230\u6211\u7684\u5956\u52b1\u67e5\u770b\u3002'
+    p5UseMessage.value = CLAIM_SUCCESS_COUPON_FALLBACK_MESSAGE
     trackEvent('use_benefit_redirect_fail')
   }
 
@@ -1865,7 +1883,7 @@ export function useP1Activity(options = {}) {
       })
       .catch(() => {
         trackEvent('activity_home_load_error')
-        showTimedTip('濞茶濮╅幒銉ュ經鏉╃偞甯存径杈Е閿涘矁顕涵顔款吇閸氬海顏張宥呭瀹告彃鎯庨崝?')
+        showTimedTip('活动加载失败，请稍后重试')
       })
   }
 

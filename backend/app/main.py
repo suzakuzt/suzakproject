@@ -1,7 +1,7 @@
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -157,6 +157,11 @@ def benefit_claim(request: BenefitClaimRequest):
     try:
         return claim_benefit(request.model_dump())
     except ApiError as error:
+        if error.status_code >= 500:
+            return JSONResponse(
+                status_code=error.status_code,
+                content={"success": False, "message": error.message, "detail": error.message},
+            )
         _handle_api_error(error)
 
 

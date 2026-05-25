@@ -9,6 +9,29 @@ from fastapi.testclient import TestClient
 
 from backend.app.ai_explain import _parse_ai_content
 from backend.app.main import app
+from backend.services.hermes_coupon_client import HermesCouponError
+
+
+class FakeHermesCouponClient:
+    def __init__(self):
+        self.issued_mobiles = []
+        self.issued_requests = []
+        self.issue_error = None
+
+    def issue_coupon(self, mobile, issue_config=None):
+        self.issued_mobiles.append(mobile)
+        self.issued_requests.append({"mobile": mobile, "issue_config": issue_config})
+        if self.issue_error:
+            raise self.issue_error
+        return {
+            "code": "0",
+            "success": True,
+            "data": {
+                "id": 2605250000000031,
+                "successNum": 1,
+                "failNum": 0,
+            },
+        }
 
 
 class AiExplainParsingTests(unittest.TestCase):
@@ -37,7 +60,7 @@ class ApiHealthTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["database"]["connected"], True)
-        self.assertEqual(payload["database"]["table_count"], 16)
+        self.assertEqual(payload["database"]["table_count"], 17)
         self.assertEqual(payload["activity"]["activity_code"], "gaokao_lucky_sign_2026")
         self.assertEqual(payload["seed_counts"]["reward_count"], 7)
 
@@ -49,6 +72,7 @@ class ActivityApiFlowTests(unittest.TestCase):
         self.poster_dir = Path(self.temp_dir.name) / "posters"
         self._previous_database_path = os.environ.get("GAOKAO_H5_DB_PATH")
         self._previous_poster_dir = os.environ.get("GAOKAO_H5_POSTER_DIR")
+        self._previous_poster_max_bytes = os.environ.get("GAOKAO_H5_POSTER_MAX_BYTES")
         self._previous_deepseek_env = {
             key: os.environ.get(key)
             for key in ("DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL", "DEEPSEEK_MODEL", "DEEPSEEK_REASONING_EFFORT")
@@ -59,11 +83,15 @@ class ActivityApiFlowTests(unittest.TestCase):
         os.environ.pop("DEEPSEEK_BASE_URL", None)
         os.environ.pop("DEEPSEEK_MODEL", None)
         os.environ.pop("DEEPSEEK_REASONING_EFFORT", None)
+        self.hermes_client = FakeHermesCouponClient()
+        self._hermes_patch = patch("backend.app.activity_service.get_hermes_coupon_client", return_value=self.hermes_client)
+        self._hermes_patch.start()
         self._initialize_database()
         self.client = TestClient(app)
 
     def tearDown(self):
         self.client.close()
+        self._hermes_patch.stop()
         if self._previous_database_path is None:
             os.environ.pop("GAOKAO_H5_DB_PATH", None)
         else:
@@ -72,6 +100,10 @@ class ActivityApiFlowTests(unittest.TestCase):
             os.environ.pop("GAOKAO_H5_POSTER_DIR", None)
         else:
             os.environ["GAOKAO_H5_POSTER_DIR"] = self._previous_poster_dir
+        if self._previous_poster_max_bytes is None:
+            os.environ.pop("GAOKAO_H5_POSTER_MAX_BYTES", None)
+        else:
+            os.environ["GAOKAO_H5_POSTER_MAX_BYTES"] = self._previous_poster_max_bytes
         for key, value in self._previous_deepseek_env.items():
             if value is None:
                 os.environ.pop(key, None)
@@ -88,6 +120,7 @@ class ActivityApiFlowTests(unittest.TestCase):
             root_dir / "database" / "sqlite" / "002_seed_basic_mock_config.sql",
             root_dir / "database" / "sqlite" / "003_optimize_activity_tables.sql",
             root_dir / "database" / "sqlite" / "004_allow_duplicate_reward_claims_per_draw.sql",
+            root_dir / "database" / "sqlite" / "006_add_coupon_issue_config.sql",
         ]
         conn = sqlite3.connect(self.database_path)
         try:
@@ -151,6 +184,24 @@ class ActivityApiFlowTests(unittest.TestCase):
         finally:
             conn.close()
 
+    def _enable_coupon_issue_config(self, reward_code):
+        import sqlite3
+
+        conn = sqlite3.connect(self.database_path)
+        try:
+            conn.execute(
+                """
+                UPDATE coupon_issue_config
+                SET status = 'enabled'
+                WHERE activity_code = 'gaokao_lucky_sign_2026'
+                  AND reward_code = ?
+                """,
+                (reward_code,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
     def test_session_create_and_activity_state_return_daily_chance(self):
         session = self._create_session()
 
@@ -170,12 +221,13 @@ class ActivityApiFlowTests(unittest.TestCase):
     def test_draw_execute_consumes_chance_and_creates_one_daily_checkin(self):
         session = self._create_session()
 
-        draw = self._draw(session["session_token"])
+        with patch("backend.app.activity_service.secrets.randbelow", return_value=0):
+            draw = self._draw(session["session_token"])
 
         self.assertEqual(draw["success"], True)
-        self.assertEqual(draw["result"]["signType"], "金榜题名签")
+        self.assertEqual(draw["result"]["signType"], "未名鲤跃MIT池")
         self.assertEqual(draw["result"]["signLevel"], "上上签")
-        self.assertEqual(draw["result"]["mainTextColumns"], ["金榜题名", "愿你落笔生花"])
+        self.assertEqual(draw["result"]["mainTextColumns"], ["未名鲤跃MIT池"])
         self.assertEqual(draw["daily_state"]["remaining_draw_count"], 0)
         self.assertEqual(draw["checkin"]["checked_in_today"], True)
         self.assertEqual(draw["checkin"]["lit_days"], 1)
@@ -187,8 +239,25 @@ class ActivityApiFlowTests(unittest.TestCase):
         self.assertEqual(second_response.json()["success"], False)
         self.assertEqual(second_response.json()["error_code"], "no_chance")
 
+    def test_draw_execute_randomly_picks_from_the_sign_library(self):
+        session = self._create_session()
+        self._set_draw_chance(session["user"]["user_id"], 5)
+
+        with patch("backend.app.activity_service.secrets.randbelow", side_effect=[0, 1, 2, 3, 4]):
+            draws = [self._draw(session["session_token"]) for _ in range(5)]
+
+        self.assertEqual(
+            [draw["result"]["result_code"] for draw in draws],
+            ["sign_001", "sign_002", "sign_003", "sign_004", "sign_005"],
+        )
+        self.assertEqual(
+            [draw["result"]["mainTextColumns"][0] for draw in draws],
+            ["未名鲤跃MIT池", "清华星链罩牛津", "复旦光阶通哈佛", "浙大鹰叼剑桥分", "上交船载斯坦福"],
+        )
+
     def test_draw_randomly_assigns_coupon_and_claim_requires_that_coupon(self):
         session = self._create_session()
+        self._enable_coupon_issue_config("discount_75")
 
         draw = self._draw_with_reward(session["session_token"], "discount_75")
 
@@ -223,6 +292,40 @@ class ActivityApiFlowTests(unittest.TestCase):
         self.assertEqual(wrong_claim.json()["detail"], "reward does not match draw result")
         self.assertEqual(right_claim.status_code, 200)
         self.assertEqual(right_claim.json()["reward"]["reward_code"], "discount_75")
+
+    def test_currently_disabled_non_10_coupon_claim_does_not_save_success(self):
+        import sqlite3
+
+        session = self._create_session()
+        draw = self._draw_with_reward(session["session_token"], "coupon_30")
+
+        explain_response = self.client.get(
+            "/api/explain/detail",
+            params={"session_token": session["session_token"], "draw_id": draw["draw_id"]},
+        )
+        claim_response = self.client.post(
+            "/api/benefit/claim",
+            json={
+                "session_token": session["session_token"],
+                "draw_id": draw["draw_id"],
+                "reward_code": "coupon_30",
+                "mobile": "13800138000",
+            },
+        )
+
+        self.assertEqual(explain_response.status_code, 200)
+        self.assertEqual(explain_response.json()["benefit"]["rewardCode"], "coupon_30")
+        self.assertEqual(explain_response.json()["benefit"]["reward"]["imageUrl"], "/assets/p5/element_coupon_30yuan_card.png")
+        self.assertEqual(claim_response.status_code, 502)
+        self.assertEqual(self.hermes_client.issued_mobiles, [])
+
+        conn = sqlite3.connect(self.database_path)
+        try:
+            claim_count = conn.execute("SELECT COUNT(*) FROM reward_claim_record").fetchone()[0]
+        finally:
+            conn.close()
+
+        self.assertEqual(claim_count, 0)
 
     def test_draw_random_pool_rotates_all_five_configured_p5_coupon_assets(self):
         session = self._create_session()
@@ -295,7 +398,7 @@ class ActivityApiFlowTests(unittest.TestCase):
             json={
                 "session_token": session["session_token"],
                 "draw_id": draw["draw_id"],
-                "reward_code": "coupon_20",
+                "reward_code": "coupon_10",
                 "mobile": "13800138000",
             },
         )
@@ -304,7 +407,7 @@ class ActivityApiFlowTests(unittest.TestCase):
             json={
                 "session_token": session["session_token"],
                 "draw_id": draw["draw_id"],
-                "reward_code": "coupon_30",
+                "reward_code": "coupon_20",
                 "mobile": "13800138000",
             },
         )
@@ -312,8 +415,8 @@ class ActivityApiFlowTests(unittest.TestCase):
         self.assertEqual(randomize_response.status_code, 200)
         self.assertEqual(randomize_response.json()["rewardCode"], "coupon_20")
         self.assertEqual(randomize_response.json()["reward"]["imageUrl"], "/assets/p5/element_coupon_20yuan_card.png")
-        self.assertEqual(wrong_claim.status_code, 200)
-        self.assertEqual(right_claim.status_code, 400)
+        self.assertEqual(wrong_claim.status_code, 400)
+        self.assertEqual(right_claim.status_code, 502)
 
     def test_benefit_randomize_ignores_exclude_and_returns_draw_coupon(self):
         session = self._create_session()
@@ -358,7 +461,8 @@ class ActivityApiFlowTests(unittest.TestCase):
 
     def test_explain_detail_returns_readable_chinese_copy(self):
         session = self._create_session()
-        draw = self._draw(session["session_token"])
+        with patch("backend.app.activity_service.secrets.randbelow", return_value=0):
+            draw = self._draw(session["session_token"])
 
         response = self.client.get("/api/explain/detail", params={"session_token": session["session_token"], "draw_id": draw["draw_id"]})
 
@@ -367,7 +471,7 @@ class ActivityApiFlowTests(unittest.TestCase):
         self.assertGreaterEqual(len(payload["thinkingProcess"]), 3)
         self.assertEqual(payload["ai"]["provider"], "fallback")
         self.assertEqual(payload["title"], "AI解签结果")
-        self.assertEqual(payload["explainLines"], ["锦绣前程，步步生花", "实力如锦，终成佳绩", "心之所向，金榜题名"])
+        self.assertEqual(payload["explainLines"], ["北大锦鲤游进麻省理工实验室，理综题自动生成标准答案！"])
         self.assertEqual(payload["product"]["productName"], "和牛 · 锦绣前程板腱")
         self.assertEqual(payload["benefit"]["claimButtonText"], "领取专属福利")
 
@@ -450,21 +554,21 @@ class ActivityApiFlowTests(unittest.TestCase):
 
     def test_claimed_coupon_appears_in_reward_center_and_gift_is_last(self):
         session = self._create_session()
-        draw = self._draw_with_reward(session["session_token"], "coupon_20")
+        draw = self._draw_with_reward(session["session_token"], "coupon_10")
 
         claim_response = self.client.post(
             "/api/benefit/claim",
             json={
                 "session_token": session["session_token"],
                 "draw_id": draw["draw_id"],
-                "reward_code": "coupon_20",
+                "reward_code": "coupon_10",
                 "mobile": "13800138000",
             },
         )
         reward_response = self.client.get("/api/reward/center/detail", params={"session_token": session["session_token"]})
 
         self.assertEqual(claim_response.status_code, 200)
-        self.assertEqual(claim_response.json()["reward"]["reward_code"], "coupon_20")
+        self.assertEqual(claim_response.json()["reward"]["reward_code"], "coupon_10")
         self.assertEqual(claim_response.json()["receiver_mobile_masked"], "138****8000")
         self.assertTrue(claim_response.json()["claim_token"].startswith("ct_"))
         self.assertIn("claim_token=", claim_response.json()["action"]["target"])
@@ -477,11 +581,11 @@ class ActivityApiFlowTests(unittest.TestCase):
         self.assertEqual(len(rewards), 6)
         self.assertEqual([reward["reward_code"] for reward in rewards], ["coupon_10", "coupon_20", "coupon_30", "discount_9", "discount_75", "gift_985"])
         self.assertEqual(rewards[0]["reward_code"], "coupon_10")
-        self.assertEqual(rewards[0]["status"], "unclaimed")
-        self.assertEqual(rewards[0]["button_text"], "\u672a\u9886\u53d6")
+        self.assertEqual(rewards[0]["status"], "unused")
+        self.assertEqual(rewards[0]["button_text"], "\u53bb\u9886\u53d6")
         self.assertEqual(rewards[1]["reward_code"], "coupon_20")
-        self.assertEqual(rewards[1]["status"], "unused")
-        self.assertEqual(rewards[1]["button_text"], "\u53bb\u9886\u53d6")
+        self.assertEqual(rewards[1]["status"], "unclaimed")
+        self.assertEqual(rewards[1]["button_text"], "\u672a\u9886\u53d6")
         self.assertEqual(rewards[-1]["reward_code"], "gift_985")
         self.assertEqual(rewards[-1]["button_text"], "未达标")
         self.assertEqual(reward_response.json()["draw_again_action"]["action"]["target"], "/activity/home")
@@ -490,20 +594,20 @@ class ActivityApiFlowTests(unittest.TestCase):
 
     def test_same_coupon_can_be_claimed_again_for_a_new_draw(self):
         session = self._create_session()
-        first_draw = self._draw_with_reward(session["session_token"], "coupon_20")
+        first_draw = self._draw_with_reward(session["session_token"], "coupon_10")
 
         first_claim = self.client.post(
             "/api/benefit/claim",
             json={
                 "session_token": session["session_token"],
                 "draw_id": first_draw["draw_id"],
-                "reward_code": "coupon_20",
+                "reward_code": "coupon_10",
                 "mobile": "13800138000",
             },
         )
 
         self.client.post("/api/share/record", json={"session_token": session["session_token"], "share_channel": "wechat"})
-        second_draw = self._draw_with_reward(session["session_token"], "coupon_20")
+        second_draw = self._draw_with_reward(session["session_token"], "coupon_10")
         second_explain = self.client.get(
             "/api/explain/detail",
             params={"session_token": session["session_token"], "draw_id": second_draw["draw_id"]},
@@ -513,7 +617,7 @@ class ActivityApiFlowTests(unittest.TestCase):
             json={
                 "session_token": session["session_token"],
                 "draw_id": second_draw["draw_id"],
-                "reward_code": "coupon_20",
+                "reward_code": "coupon_10",
                 "mobile": "13900139000",
             },
         )
@@ -525,13 +629,13 @@ class ActivityApiFlowTests(unittest.TestCase):
         self.assertEqual(second_claim.status_code, 200)
         self.assertNotEqual(first_claim.json()["claim_no"], second_claim.json()["claim_no"])
         claimed_rewards = reward_response.json()["claimed_rewards"]
-        self.assertEqual([reward["reward_code"] for reward in claimed_rewards], ["coupon_20", "coupon_20"])
+        self.assertEqual([reward["reward_code"] for reward in claimed_rewards], ["coupon_10", "coupon_10"])
         self.assertNotEqual(claimed_rewards[0]["reward_id"], claimed_rewards[1]["reward_id"])
         display_rewards = reward_response.json()["display_rewards"]
         self.assertEqual([reward["reward_code"] for reward in display_rewards], ["coupon_10", "coupon_20", "coupon_30", "discount_9", "discount_75", "gift_985"])
-        self.assertEqual(sum(1 for reward in display_rewards if reward["reward_code"] == "coupon_20"), 1)
-        self.assertEqual(display_rewards[0]["button_text"], "\u672a\u9886\u53d6")
-        self.assertEqual(display_rewards[1]["button_text"], "\u53bb\u9886\u53d6")
+        self.assertEqual(sum(1 for reward in display_rewards if reward["reward_code"] == "coupon_10"), 1)
+        self.assertEqual(display_rewards[0]["button_text"], "\u53bb\u9886\u53d6")
+        self.assertEqual(display_rewards[1]["button_text"], "\u672a\u9886\u53d6")
 
     def test_claim_benefit_requires_valid_mobile_and_persists_claim_identity(self):
         import sqlite3
@@ -570,17 +674,21 @@ class ActivityApiFlowTests(unittest.TestCase):
         self.assertEqual(valid_mobile.status_code, 200)
 
         payload = valid_mobile.json()
+        self.assertEqual(payload["success"], True)
+        self.assertEqual(payload["message"], "领取成功")
         self.assertEqual(payload["receiver_mobile_masked"], "138****8000")
-        self.assertEqual(payload["coupon_issue_status"], "pending")
+        self.assertEqual(payload["coupon_issue_status"], "issued")
+        self.assertEqual(payload["external_coupon_id"], "2605250000000031")
         self.assertTrue(payload["claim_token"].startswith("ct_"))
         self.assertNotIn("13800138000", payload["action"]["target"])
+        self.assertEqual(self.hermes_client.issued_mobiles, ["13800138000"])
 
         conn = sqlite3.connect(self.database_path)
         try:
             conn.row_factory = sqlite3.Row
             record = conn.execute(
                 """
-                SELECT receiver_mobile, receiver_mobile_masked, claim_token, coupon_issue_status
+                SELECT receiver_mobile, receiver_mobile_masked, claim_token, coupon_issue_status, external_coupon_id
                 FROM reward_claim_record
                 WHERE claim_no = ?
                 """,
@@ -592,7 +700,8 @@ class ActivityApiFlowTests(unittest.TestCase):
         self.assertEqual(record["receiver_mobile"], "13800138000")
         self.assertEqual(record["receiver_mobile_masked"], "138****8000")
         self.assertEqual(record["claim_token"], payload["claim_token"])
-        self.assertEqual(record["coupon_issue_status"], "pending")
+        self.assertEqual(record["coupon_issue_status"], "issued")
+        self.assertEqual(record["external_coupon_id"], "2605250000000031")
 
         resolve_response = self.client.get(
             "/api/benefit/claim/resolve",
@@ -604,8 +713,171 @@ class ActivityApiFlowTests(unittest.TestCase):
         self.assertEqual(resolve_response.json()["receiver_mobile_masked"], "138****8000")
         self.assertNotIn("receiver_mobile", resolve_response.json())
 
+    def test_claim_benefit_uses_enabled_10_yuan_coupon_issue_config_for_hermes(self):
+        session = self._create_session()
+        draw = self._draw_with_reward(session["session_token"], "coupon_10")
+
+        response = self.client.post(
+            "/api/benefit/claim",
+            json={
+                "session_token": session["session_token"],
+                "draw_id": draw["draw_id"],
+                "reward_code": "coupon_10",
+                "mobile": "13800138000",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(self.hermes_client.issued_requests), 1)
+        issue_config = self.hermes_client.issued_requests[0]["issue_config"]
+        self.assertIsNotNone(issue_config)
+        self.assertEqual(issue_config.reward_code, "coupon_10")
+        self.assertEqual(issue_config.face_value, "10")
+        self.assertEqual(issue_config.hermes_title, "一举高中·无门槛10元优惠券")
+
+    def test_existing_issued_claim_returns_without_requiring_current_issue_config(self):
+        import sqlite3
+
+        session = self._create_session()
+        draw = self._draw_with_reward(session["session_token"], "coupon_10")
+        first_claim = self.client.post(
+            "/api/benefit/claim",
+            json={
+                "session_token": session["session_token"],
+                "draw_id": draw["draw_id"],
+                "reward_code": "coupon_10",
+                "mobile": "13800138000",
+            },
+        )
+
+        conn = sqlite3.connect(self.database_path)
+        try:
+            conn.execute(
+                """
+                UPDATE coupon_issue_config
+                SET status = 'disabled'
+                WHERE activity_code = 'gaokao_lucky_sign_2026' AND reward_code = 'coupon_10'
+                """
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        second_claim = self.client.post(
+            "/api/benefit/claim",
+            json={
+                "session_token": session["session_token"],
+                "draw_id": draw["draw_id"],
+                "reward_code": "coupon_10",
+                "mobile": "13800138000",
+            },
+        )
+
+        self.assertEqual(first_claim.status_code, 200)
+        self.assertEqual(second_claim.status_code, 200)
+        self.assertEqual(second_claim.json()["claim_no"], first_claim.json()["claim_no"])
+        self.assertEqual(self.hermes_client.issued_mobiles, ["13800138000"])
+
+    def test_claim_benefit_does_not_save_success_when_hermes_issue_fails(self):
+        import sqlite3
+
+        self.hermes_client.issue_error = HermesCouponError("发券失败，请稍后重试")
+        session = self._create_session()
+        draw = self._draw(session["session_token"])
+
+        response = self.client.post(
+            "/api/benefit/claim",
+            json={
+                "session_token": session["session_token"],
+                "draw_id": draw["draw_id"],
+                "reward_code": draw["result"]["reward_code"],
+                "mobile": "13800138000",
+            },
+        )
+
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.json()["success"], False)
+        self.assertEqual(response.json()["message"], "发券失败，请稍后重试")
+        self.assertEqual(response.json()["detail"], "发券失败，请稍后重试")
+        self.assertEqual(self.hermes_client.issued_mobiles, ["13800138000"])
+
+        conn = sqlite3.connect(self.database_path)
+        try:
+            claim_count = conn.execute(
+                """
+                SELECT COUNT(*)
+                FROM reward_claim_record
+                WHERE claim_status = 'success' OR coupon_issue_status = 'issued'
+                """
+            ).fetchone()[0]
+            failed_record = conn.execute(
+                """
+                SELECT receiver_mobile_masked, claim_status, coupon_issue_status, coupon_issue_error
+                FROM reward_claim_record
+                """
+            ).fetchone()
+        finally:
+            conn.close()
+
+        self.assertEqual(claim_count, 0)
+        self.assertIsNotNone(failed_record)
+        self.assertEqual(failed_record[0], "138****8000")
+        self.assertEqual(failed_record[1], "failed")
+        self.assertEqual(failed_record[2], "failed")
+        self.assertEqual(failed_record[3], "发券失败，请稍后重试")
+
+    def test_claim_benefit_does_not_issue_again_when_existing_claim_is_pending(self):
+        import sqlite3
+
+        session = self._create_session()
+        draw = self._draw_with_reward(session["session_token"], "coupon_10")
+
+        conn = sqlite3.connect(self.database_path)
+        try:
+            conn.execute(
+                """
+                INSERT INTO reward_claim_record (
+                  activity_code, user_id, session_id, draw_id, reward_code, claim_no, claim_status,
+                  claim_channel, reward_snapshot_json, action_type, action_target, receiver_mobile,
+                  receiver_mobile_masked, claim_token, coupon_issue_status, coupon_issue_error,
+                  external_coupon_id, biz_date
+                )
+                VALUES (
+                  'gaokao_lucky_sign_2026', ?, ?, ?, 'coupon_10', 'CLPENDING001', 'pending',
+                  'h5', '{}', 'mini_program_page', '/pages/my-coupon/index', ?,
+                  ?, 'ct_pending_claim', 'pending', NULL, NULL, ?
+                )
+                """,
+                (
+                    session["user"]["user_id"],
+                    session["session"]["session_id"],
+                    draw["draw_id"],
+                    "13800138000",
+                    "138****8000",
+                    "2026-05-26",
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        response = self.client.post(
+            "/api/benefit/claim",
+            json={
+                "session_token": session["session_token"],
+                "draw_id": draw["draw_id"],
+                "reward_code": "coupon_10",
+                "mobile": "13800138000",
+            },
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["detail"], "领取处理中，请稍后查看")
+        self.assertEqual(self.hermes_client.issued_mobiles, [])
+
     def test_claim_benefit_returns_p5_coupon_image_for_draw_reward(self):
         session = self._create_session()
+        self._enable_coupon_issue_config("discount_75")
         draw = self._draw_with_reward(session["session_token"], "discount_75")
         explain_response = self.client.get(
             "/api/explain/detail",
@@ -673,7 +945,8 @@ class ActivityApiFlowTests(unittest.TestCase):
 
     def test_rules_explain_and_tracking_endpoints_return_flow_data(self):
         session = self._create_session()
-        draw = self._draw(session["session_token"])
+        with patch("backend.app.activity_service.secrets.randbelow", return_value=0):
+            draw = self._draw(session["session_token"])
 
         explain_response = self.client.get(
             "/api/explain/detail",
@@ -720,6 +993,27 @@ class ActivityApiFlowTests(unittest.TestCase):
         image_response = self.client.get(payload["poster_url"])
         self.assertEqual(image_response.status_code, 200)
         self.assertEqual(image_response.headers["content-type"], "image/png")
+
+    def test_poster_save_rejects_images_over_configured_size_limit(self):
+        os.environ["GAOKAO_H5_POSTER_MAX_BYTES"] = "16"
+        session = self._create_session()
+        image_data_url = (
+            "data:image/png;base64,"
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+        )
+
+        response = self.client.post(
+            "/api/poster/save",
+            json={
+                "session_token": session["session_token"],
+                "page_code": "home",
+                "poster_type": "home_share",
+                "image_data_url": image_data_url,
+            },
+        )
+
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(response.json()["detail"], "poster image is too large")
 
 
 if __name__ == "__main__":

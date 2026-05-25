@@ -77,6 +77,28 @@ CREATE TABLE IF NOT EXISTS reward_config (
   FOREIGN KEY (activity_code) REFERENCES activity_config(activity_code)
 );
 
+CREATE TABLE IF NOT EXISTS coupon_issue_config (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  activity_code TEXT NOT NULL,
+  reward_code TEXT NOT NULL,
+  issue_channel TEXT NOT NULL DEFAULT 'hermes' CHECK (issue_channel IN ('hermes')),
+  hermes_title TEXT NOT NULL,
+  hermes_id INTEGER NOT NULL,
+  ref_id INTEGER NOT NULL,
+  ref_type INTEGER NOT NULL DEFAULT 1,
+  start_time TEXT NOT NULL,
+  end_time TEXT NOT NULL,
+  face_value TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'enabled' CHECK (status IN ('enabled', 'disabled')),
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  ext_json TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (activity_code, reward_code, issue_channel),
+  FOREIGN KEY (activity_code) REFERENCES activity_config(activity_code),
+  FOREIGN KEY (activity_code, reward_code) REFERENCES reward_config(activity_code, reward_code)
+);
+
 CREATE TABLE IF NOT EXISTS draw_result_config (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   activity_code TEXT NOT NULL,
@@ -317,6 +339,9 @@ CREATE INDEX IF NOT EXISTS idx_product_recommend_status
 
 CREATE INDEX IF NOT EXISTS idx_reward_config_status
   ON reward_config(activity_code, reward_type, status, sort_order);
+
+CREATE INDEX IF NOT EXISTS idx_coupon_issue_status
+  ON coupon_issue_config(activity_code, status, sort_order);
 
 CREATE INDEX IF NOT EXISTS idx_draw_result_status
   ON draw_result_config(activity_code, status, sort_order);

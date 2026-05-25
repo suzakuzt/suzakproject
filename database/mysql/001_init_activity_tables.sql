@@ -92,6 +92,31 @@ CREATE TABLE IF NOT EXISTS reward_config (
   CHECK (status IN ('enabled', 'disabled'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS coupon_issue_config (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  activity_code VARCHAR(64) NOT NULL,
+  reward_code VARCHAR(64) NOT NULL,
+  issue_channel VARCHAR(32) NOT NULL DEFAULT 'hermes',
+  hermes_title VARCHAR(128) NOT NULL,
+  hermes_id BIGINT NOT NULL,
+  ref_id BIGINT NOT NULL,
+  ref_type INT NOT NULL DEFAULT 1,
+  start_time DATETIME NOT NULL,
+  end_time DATETIME NOT NULL,
+  face_value VARCHAR(64) NOT NULL,
+  status VARCHAR(16) NOT NULL DEFAULT 'enabled',
+  sort_order INT NOT NULL DEFAULT 0,
+  ext_json JSON NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_coupon_issue_config (activity_code, reward_code, issue_channel),
+  KEY idx_coupon_issue_status (activity_code, status, sort_order),
+  CONSTRAINT fk_coupon_issue_activity FOREIGN KEY (activity_code) REFERENCES activity_config(activity_code),
+  CONSTRAINT fk_coupon_issue_reward FOREIGN KEY (activity_code, reward_code) REFERENCES reward_config(activity_code, reward_code),
+  CHECK (issue_channel IN ('hermes')),
+  CHECK (status IN ('enabled', 'disabled'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS draw_result_config (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   activity_code VARCHAR(64) NOT NULL,

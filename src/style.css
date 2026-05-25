@@ -132,32 +132,61 @@ button {
   box-shadow: 0 0 42px rgba(0, 0, 0, 0.5);
 }
 
-.brand-logo {
+.home-brand-wordmark {
   position: absolute;
-  z-index: 5;
-  display: block;
-  aspect-ratio: 1;
-  object-fit: contain;
+  z-index: 4;
+  top: 3.4%;
+  left: 5.1%;
+  width: 18.5%;
+  padding: 0;
+  border: 0;
+  color: #fff;
+  background: transparent;
+  text-shadow: 0 1px 3px rgba(62, 0, 0, 0.42);
   pointer-events: none;
-  filter: drop-shadow(0 5px 7px rgba(64, 0, 0, 0.24));
 }
 
-.home-brand-logo {
-  top: 3.8%;
-  left: 4.8%;
-  width: 14.6%;
+.home-brand-wordmark-year,
+.home-brand-wordmark-main,
+.home-brand-wordmark-sub {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: #fff;
+  line-height: 1;
+  letter-spacing: 0;
+  text-align: center;
+  white-space: nowrap;
 }
 
-.p2-brand-logo {
-  top: 8.8%;
-  left: 6.2%;
-  width: 10.2%;
+.home-brand-wordmark-year {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(8px, 2.4vw, 11px);
+  letter-spacing: 0.12em;
 }
 
-.p6-brand-logo {
-  top: 12%;
-  left: 4.8%;
-  width: 10.8%;
+.home-brand-wordmark-main {
+  font-family: Georgia, "Times New Roman", serif;
+  color: #fff;
+  font-size: clamp(20px, 5.4vw, 24px);
+  font-style: italic;
+  font-weight: 700;
+  line-height: 0.86;
+  transform: scaleX(1.04);
+  transform-origin: center;
+}
+
+.home-brand-wordmark-main span {
+  display: block;
+}
+
+.home-brand-wordmark-sub {
+  margin-top: 4px;
+  font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif;
+  font-size: clamp(8px, 2.4vw, 11px);
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: 0.04em;
 }
 
 .rule-entry {
@@ -185,6 +214,54 @@ button {
 .rule-entry:active {
   transform: translateY(2px) scale(0.985);
   filter: brightness(0.98);
+}
+
+.home-barrage {
+  position: absolute;
+  z-index: 3;
+  top: 28.2%;
+  left: 0;
+  width: 100%;
+  height: 12.8%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.home-barrage-item {
+  position: absolute;
+  top: var(--barrage-row);
+  left: -86%;
+  display: inline-block;
+  min-width: max-content;
+  color: #f8d982;
+  font-size: clamp(10px, 2.35vw, 11.5px);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: 0;
+  white-space: nowrap;
+  text-shadow:
+    0 1px 2px rgba(74, 17, 0, 0.52),
+    0 0 8px rgba(255, 219, 126, 0.34);
+  animation: home-barrage-scroll var(--barrage-duration) linear infinite;
+  animation-delay: var(--barrage-delay);
+  will-change: left, opacity;
+}
+
+@keyframes home-barrage-scroll {
+  0% {
+    left: -86%;
+    opacity: 0;
+  }
+
+  8%,
+  88% {
+    opacity: 1;
+  }
+
+  100% {
+    left: 106%;
+    opacity: 0;
+  }
 }
 
 .lottery-shadow {
@@ -470,6 +547,54 @@ button {
 .dialog-actions button + button {
   color: #8b160b;
   background: #fff2ca;
+}
+
+.activity-share-poster-frame,
+.p2-poster-card {
+  position: relative;
+  display: block;
+  width: min(100%, calc((100svh - 132px) * 941 / 1672));
+  margin: 0 auto;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: #a10805;
+  overflow: hidden;
+  box-shadow: 0 20px 48px rgba(34, 0, 0, 0.4);
+}
+
+.activity-share-poster-image {
+  display: block;
+  width: 100%;
+  aspect-ratio: 941 / 1672;
+  object-fit: contain;
+}
+
+.activity-share-poster-qrcode {
+  position: absolute;
+  left: 15%;
+  top: 84.7%;
+  width: 21.2%;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 4%;
+  background: #fff;
+}
+
+.activity-share-poster-qrcode img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.activity-share-poster-qrcode span {
+  padding: 4px;
+  color: #8a2818;
+  font-size: 10px;
+  line-height: 1.2;
 }
 
 .placeholder-page {
@@ -949,34 +1074,6 @@ button {
   font-size: 13px;
   text-align: center;
   transform: translate(-50%, -50%);
-}
-
-.p4-rewards-entry {
-  position: absolute;
-  z-index: 3;
-  top: 89%;
-  left: 50%;
-  width: 34%;
-  min-height: 34px;
-  margin: 0;
-  padding: 0 0 8px;
-  border: 0;
-  border-bottom: 2px solid var(--gold-deep);
-  color: var(--gold);
-  background: transparent;
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 0;
-  white-space: nowrap;
-  cursor: pointer;
-  text-shadow: 0 1px 5px rgba(88, 0, 0, 0.55);
-  transform: translateX(-50%);
-  transition: transform 180ms ease, filter 180ms ease;
-}
-
-.p4-rewards-entry:active {
-  transform: translateX(-50%) translateY(2px) scale(0.985);
-  filter: brightness(0.98);
 }
 
 .p4-state {
@@ -1879,7 +1976,7 @@ button {
 
 .p2-poster-dialog {
   position: relative;
-  width: min(88vw, 356px);
+  width: min(84vw, 332px);
   color: #5d2417;
   text-align: center;
 }
@@ -1921,14 +2018,16 @@ button {
 }
 
 .p2-poster-card {
-  width: 100%;
-  padding: 20px 20px 22px;
-  border: 2px solid #080000;
+  position: relative;
+  display: block;
+  width: min(100%, calc((100svh - 132px) * 941 / 1672));
+  margin: 0 auto;
+  padding: 0;
+  border: 0;
   border-radius: 8px;
-  background:
-    linear-gradient(180deg, rgba(255, 242, 214, 0.96), rgba(246, 217, 174, 0.96)),
-    #f7ddb1;
-  box-shadow: 0 20px 48px rgba(34, 0, 0, 0.36);
+  background: #a10805;
+  overflow: hidden;
+  box-shadow: 0 20px 48px rgba(34, 0, 0, 0.4);
 }
 
 .p2-poster-generated-preview {

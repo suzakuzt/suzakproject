@@ -1,5 +1,7 @@
 import json
 import re
+import sqlite3
+import secrets
 import uuid
 from datetime import date, datetime
 from typing import Any
@@ -7,11 +9,13 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from .ai_explain import generate_ai_explain
 from .database import connection, fetch_all, fetch_one
+from ..services.hermes_coupon_client import HermesCouponClient, HermesCouponError, HermesCouponIssueConfig
 
 
 DEFAULT_ACTIVITY_CODE = "gaokao_lucky_sign_2026"
 MOBILE_PATTERN = re.compile(r"^1[3-9]\d{9}$")
 P5_RANDOM_REWARD_CODES = ("coupon_10", "coupon_20", "coupon_30", "discount_9", "discount_75")
+_hermes_coupon_client: HermesCouponClient | None = None
 
 
 class ApiError(Exception):
@@ -19,6 +23,13 @@ class ApiError(Exception):
         self.status_code = status_code
         self.message = message
         super().__init__(message)
+
+
+def get_hermes_coupon_client() -> HermesCouponClient:
+    global _hermes_coupon_client
+    if _hermes_coupon_client is None:
+        _hermes_coupon_client = HermesCouponClient()
+    return _hermes_coupon_client
 
 
 def create_session(payload: dict[str, Any]) -> dict[str, Any]:
@@ -130,7 +141,7 @@ def execute_draw(payload: dict[str, Any]) -> dict[str, Any]:
                 "daily_state": _format_daily_state(daily_state),
             }
 
-        result = _get_default_draw_result(conn, session["activity_code"])
+        result = _get_random_draw_result(conn, session["activity_code"])
         draw_reward = _get_random_draw_reward(conn, session["activity_code"], result.get("reward_code"), user_id=int(session["user_id"]))
         draw_no = f"DR{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6].upper()}"
         biz_date = _today()
@@ -261,50 +272,112 @@ def claim_benefit(payload: dict[str, Any]) -> dict[str, Any]:
         )
         if existing:
             claim_token = existing.get("claim_token") or _build_claim_token()
-            if not existing.get("claim_token") or not existing.get("receiver_mobile"):
-                conn.execute(
-                    """
-                    UPDATE reward_claim_record
-                    SET receiver_mobile = COALESCE(receiver_mobile, ?),
-                        receiver_mobile_masked = COALESCE(receiver_mobile_masked, ?),
-                        claim_token = COALESCE(claim_token, ?),
-                        coupon_issue_status = COALESCE(coupon_issue_status, 'pending'),
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ?
-                    """,
-                    (mobile, masked_mobile, claim_token, existing["id"]),
-                )
-            claim = fetch_one(conn, "SELECT * FROM reward_claim_record WHERE id = ?", (existing["id"],))
+            if existing.get("coupon_issue_status") == "issued" and existing.get("claim_status") == "success":
+                return _format_claim_result(existing, reward, _get_p5_reward_image_url(conn, session["activity_code"], reward))
+
+            if existing.get("coupon_issue_status") == "pending" and existing.get("claim_status") == "pending":
+                raise ApiError(409, "领取处理中，请稍后查看")
+
+            issue_config = _get_coupon_issue_config(conn, session["activity_code"], reward_code)
+            claim_id = int(existing["id"])
+            conn.execute(
+                """
+                UPDATE reward_claim_record
+                SET receiver_mobile = ?,
+                    receiver_mobile_masked = ?,
+                    claim_token = COALESCE(claim_token, ?),
+                    claim_status = 'pending',
+                    coupon_issue_status = 'pending',
+                    coupon_issue_error = NULL,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (mobile, masked_mobile, claim_token, claim_id),
+            )
+            conn.commit()
         else:
             claim_no = f"CL{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6].upper()}"
             claim_token = _build_claim_token()
+            issue_config = _get_coupon_issue_config(conn, session["activity_code"], reward_code)
+            try:
+                cursor = conn.execute(
+                    """
+                    INSERT INTO reward_claim_record (
+                      activity_code, user_id, session_id, draw_id, reward_code, claim_no, claim_status,
+                      claim_channel, reward_snapshot_json, action_type, action_target, receiver_mobile,
+                      receiver_mobile_masked, claim_token, coupon_issue_status, coupon_issue_error,
+                      external_coupon_id, biz_date, claimed_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, ?, NULL)
+                    """,
+                    (
+                        session["activity_code"],
+                        session["user_id"],
+                        session["id"],
+                        draw["id"],
+                        reward_code,
+                        claim_no,
+                        payload.get("claim_channel") or "h5",
+                        json.dumps(_format_reward_snapshot(reward), ensure_ascii=False),
+                        reward.get("action_type"),
+                        reward.get("action_target"),
+                        mobile,
+                        masked_mobile,
+                        claim_token,
+                        _today(),
+                    ),
+                )
+                claim_id = int(cursor.lastrowid)
+                conn.commit()
+            except sqlite3.IntegrityError:
+                conn.rollback()
+                duplicate = fetch_one(
+                    conn,
+                    """
+                    SELECT *
+                    FROM reward_claim_record
+                    WHERE activity_code = ? AND user_id = ? AND draw_id = ? AND reward_code = ?
+                    """,
+                    (session["activity_code"], session["user_id"], draw["id"], reward_code),
+                )
+                if duplicate and duplicate.get("coupon_issue_status") == "issued" and duplicate.get("claim_status") == "success":
+                    return _format_claim_result(duplicate, reward, _get_p5_reward_image_url(conn, session["activity_code"], reward))
+                if duplicate:
+                    raise ApiError(409, "领取处理中，请稍后查看")
+                raise
+
+        try:
+            issue_result = _issue_hermes_coupon(mobile, issue_config)
+        except ApiError as exc:
             conn.execute(
                 """
-                INSERT INTO reward_claim_record (
-                  activity_code, user_id, session_id, draw_id, reward_code, claim_no, claim_status,
-                  claim_channel, reward_snapshot_json, action_type, action_target, receiver_mobile,
-                  receiver_mobile_masked, claim_token, coupon_issue_status, biz_date, claimed_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, 'success', ?, ?, ?, ?, ?, ?, ?, 'pending', ?, CURRENT_TIMESTAMP)
+                UPDATE reward_claim_record
+                SET claim_status = 'failed',
+                    coupon_issue_status = 'failed',
+                    coupon_issue_error = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
                 """,
-                (
-                    session["activity_code"],
-                    session["user_id"],
-                    session["id"],
-                    draw["id"],
-                    reward_code,
-                    claim_no,
-                    payload.get("claim_channel") or "h5",
-                    json.dumps(_format_reward_snapshot(reward), ensure_ascii=False),
-                    reward.get("action_type"),
-                    reward.get("action_target"),
-                    mobile,
-                    masked_mobile,
-                    claim_token,
-                    _today(),
-                ),
+                (exc.message[:255], claim_id),
             )
-            claim = fetch_one(conn, "SELECT * FROM reward_claim_record WHERE claim_no = ?", (claim_no,))
+            conn.commit()
+            raise
+
+        external_coupon_id = _extract_hermes_task_id(issue_result)
+        conn.execute(
+            """
+            UPDATE reward_claim_record
+            SET claim_status = 'success',
+                coupon_issue_status = 'issued',
+                coupon_issue_error = NULL,
+                external_coupon_id = ?,
+                claimed_at = COALESCE(claimed_at, CURRENT_TIMESTAMP),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (external_coupon_id, claim_id),
+        )
+        claim = fetch_one(conn, "SELECT * FROM reward_claim_record WHERE id = ?", (claim_id,))
         conn.commit()
         return _format_claim_result(claim, reward, _get_p5_reward_image_url(conn, session["activity_code"], reward))
 
@@ -668,21 +741,20 @@ def _get_daily_state(conn, activity_code: str, user_id: int, biz_date: str) -> d
     )
 
 
-def _get_default_draw_result(conn, activity_code: str) -> dict[str, Any]:
-    result = fetch_one(
+def _get_random_draw_result(conn, activity_code: str) -> dict[str, Any]:
+    results = fetch_all(
         conn,
         """
         SELECT *
         FROM draw_result_config
         WHERE activity_code = ? AND status = 'enabled'
         ORDER BY sort_order ASC, id ASC
-        LIMIT 1
         """,
         (activity_code,),
     )
-    if not result:
+    if not results:
         raise ApiError(404, "draw result not configured")
-    return result
+    return results[secrets.randbelow(len(results))]
 
 
 def _get_random_draw_reward(
@@ -1264,6 +1336,49 @@ def _build_claim_token() -> str:
     return f"ct_{uuid.uuid4().hex}"
 
 
+def _get_coupon_issue_config(conn, activity_code: str, reward_code: str) -> HermesCouponIssueConfig:
+    row = fetch_one(
+        conn,
+        """
+        SELECT id, reward_code, hermes_title, hermes_id, ref_id, ref_type, start_time, end_time, face_value
+        FROM coupon_issue_config
+        WHERE activity_code = ?
+          AND reward_code = ?
+          AND issue_channel = 'hermes'
+          AND status = 'enabled'
+        LIMIT 1
+        """,
+        (activity_code, reward_code),
+    )
+    if not row:
+        raise ApiError(502, "发券配置缺失，请稍后重试")
+
+    return HermesCouponIssueConfig(
+        config_id=int(row["id"]),
+        reward_code=str(row["reward_code"]),
+        hermes_title=str(row["hermes_title"]),
+        hermes_id=int(row["hermes_id"]),
+        ref_id=int(row["ref_id"]),
+        ref_type=int(row["ref_type"]),
+        start_time=str(row["start_time"]),
+        end_time=str(row["end_time"]),
+        face_value=str(row["face_value"]),
+    )
+
+
+def _issue_hermes_coupon(mobile: str, issue_config: HermesCouponIssueConfig) -> dict[str, Any]:
+    try:
+        return get_hermes_coupon_client().issue_coupon(mobile, issue_config)
+    except HermesCouponError as exc:
+        raise ApiError(502, "发券失败，请稍后重试") from exc
+
+
+def _extract_hermes_task_id(issue_result: dict[str, Any]) -> str | None:
+    data = issue_result.get("data") if isinstance(issue_result.get("data"), dict) else {}
+    task_id = data.get("id")
+    return None if task_id in (None, "") else str(task_id)
+
+
 def _append_claim_identity(target: str, claim_token: str | None, claim_no: str | None) -> str:
     if not target:
         return ""
@@ -1296,6 +1411,8 @@ def _format_claim_result(claim: dict[str, Any], reward: dict[str, Any], p5_image
     button_text = "去领取" if reward.get("reward_type") in ("coupon", "discount_coupon") else reward.get("button_text") or "去领取"
 
     return {
+        "success": True,
+        "message": "领取成功",
         "pageTitle": "领取成功",
         "claim_no": claim_no,
         "claim_token": claim_token,
@@ -1305,6 +1422,8 @@ def _format_claim_result(claim: dict[str, Any], reward: dict[str, Any], p5_image
         "receiverMobileMasked": receiver_mobile_masked,
         "coupon_issue_status": coupon_issue_status,
         "couponIssueStatus": coupon_issue_status,
+        "external_coupon_id": claim.get("external_coupon_id") or "",
+        "externalCouponId": claim.get("external_coupon_id") or "",
         "reward": _format_reward_for_p5(reward, p5_image_url, claim.get("use_status") or "unused"),
         "action": {
             "buttonText": button_text,

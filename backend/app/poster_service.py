@@ -10,6 +10,7 @@ from .activity_service import DEFAULT_ACTIVITY_CODE, ApiError, record_tracking_e
 
 PNG_DATA_URL_PREFIX = "data:image/png;base64,"
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+DEFAULT_MAX_POSTER_IMAGE_BYTES = 8 * 1024 * 1024
 
 
 def get_poster_storage_dir() -> Path:
@@ -20,16 +21,37 @@ def get_poster_storage_dir() -> Path:
     return Path(__file__).resolve().parents[1] / "data" / "posters"
 
 
+def get_max_poster_image_bytes() -> int:
+    configured_limit = os.environ.get("GAOKAO_H5_POSTER_MAX_BYTES")
+    if not configured_limit:
+        return DEFAULT_MAX_POSTER_IMAGE_BYTES
+
+    try:
+        limit = int(configured_limit)
+    except ValueError as error:
+        raise ApiError(500, "poster image size limit is invalid") from error
+
+    return max(1, limit)
+
+
 def save_poster(payload: dict[str, Any]) -> dict[str, Any]:
     image_data_url = payload.get("image_data_url") or ""
     if not image_data_url.startswith(PNG_DATA_URL_PREFIX):
         raise ApiError(400, "poster image must be a png data url")
 
     encoded_image = image_data_url[len(PNG_DATA_URL_PREFIX) :]
+    max_bytes = get_max_poster_image_bytes()
+    max_encoded_length = ((max_bytes + 2) // 3) * 4
+    if len(encoded_image) > max_encoded_length:
+        raise ApiError(413, "poster image is too large")
+
     try:
         image_bytes = base64.b64decode(encoded_image, validate=True)
     except (binascii.Error, ValueError) as error:
         raise ApiError(400, "poster image base64 is invalid") from error
+
+    if len(image_bytes) > max_bytes:
+        raise ApiError(413, "poster image is too large")
 
     if not image_bytes.startswith(PNG_SIGNATURE):
         raise ApiError(400, "poster image content is not png")

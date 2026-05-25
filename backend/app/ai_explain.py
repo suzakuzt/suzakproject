@@ -3,8 +3,9 @@ import os
 import re
 import urllib.error
 import urllib.request
-from pathlib import Path
 from typing import Any
+
+from .local_env import load_local_env
 
 
 PROMPT_VERSION = "p4_deepseek_blessing_v1"
@@ -45,7 +46,7 @@ SYSTEM_PROMPT = """你是高考 H5 活动里的“小璞”，要为用户生成
 
 
 def generate_ai_explain(result: dict[str, Any], product: dict[str, Any] | None) -> dict[str, Any]:
-    _load_local_env()
+    load_local_env()
     config = _read_ai_config()
     if not config["api_key"]:
         return _fallback_payload(config, reason="missing_api_key", result=result)
@@ -267,16 +268,3 @@ def _read_int_env(name: str, default: int) -> int:
         return int(os.environ.get(name, default))
     except (TypeError, ValueError):
         return default
-
-
-def _load_local_env() -> None:
-    backend_dir = Path(__file__).resolve().parents[1]
-    for env_path in (backend_dir / ".env", backend_dir / ".env.local"):
-        if not env_path.exists():
-            continue
-        for line in env_path.read_text(encoding="utf-8").splitlines():
-            stripped = line.strip()
-            if not stripped or stripped.startswith("#") or "=" not in stripped:
-                continue
-            key, value = stripped.split("=", 1)
-            os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))

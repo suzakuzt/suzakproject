@@ -69,7 +69,6 @@ const {
   closeP2Panel,
   closeShareGuide,
   completeDrawAnimation,
-  completeShare,
   currentPage,
   drawAnimationStatus,
   drawChance,
@@ -117,7 +116,6 @@ const {
   retryP4Detail,
   retryP6Center,
   retryP2Result,
-  shareProgressText,
   sessionToken,
   showDrawAnimation,
   showShareGuide,
@@ -140,9 +138,7 @@ const {
 })
 
 const chanceText = computed(() => `我的摇签机会 ${drawChance.value}次`)
-const commonAsset = (name) => `${import.meta.env.BASE_URL}assets/common/${name}`
 const homeAsset = (name) => `${import.meta.env.BASE_URL}assets/home/${name}`
-const primeCutsLogoSrc = commonAsset('element_prime_cuts_logo.png')
 const drawAnimationWebmSrc = homeAsset('CQ2-transparent-3s.webm')
 const p2Asset = (name) => `${import.meta.env.BASE_URL}assets/p2/${name}`
 const p4Asset = (name) => `${import.meta.env.BASE_URL}assets/p4/${name}`
@@ -150,7 +146,36 @@ const p5Asset = (name) => `${import.meta.env.BASE_URL}assets/p5/${name}`
 const p6Asset = (name) => `${import.meta.env.BASE_URL}assets/p6/${name}`
 const p7Asset = (name) => `${import.meta.env.BASE_URL}assets/p7/${name}`
 const p8Asset = (name) => `${import.meta.env.BASE_URL}assets/p8/${name}`
+const shareAsset = (name) => `${import.meta.env.BASE_URL}assets/share/${name}`
+const activitySharePosterSrc = shareAsset('share_activity_poster.png')
 const P5_FALLBACK_COUPON_IMAGE = 'element_coupon_20yuan_card.png'
+const homeBarrageItems = [
+  {
+    id: 'coupon-138438',
+    text: '138*****438抽中10元优惠券',
+    style: { '--barrage-row': '0%', '--barrage-delay': '-1s', '--barrage-duration': '24s' },
+  },
+  {
+    id: 'coupon-130721',
+    text: '130*****721抽中20元优惠券',
+    style: { '--barrage-row': '22%', '--barrage-delay': '-5.8s', '--barrage-duration': '24s' },
+  },
+  {
+    id: 'coupon-189906',
+    text: '189*****906抽中30元优惠券',
+    style: { '--barrage-row': '44%', '--barrage-delay': '-10.6s', '--barrage-duration': '24s' },
+  },
+  {
+    id: 'coupon-158552',
+    text: '158*****552抽中9折优惠券',
+    style: { '--barrage-row': '66%', '--barrage-delay': '-15.4s', '--barrage-duration': '24s' },
+  },
+  {
+    id: 'coupon-186219',
+    text: '186*****219抽中7.5折优惠券',
+    style: { '--barrage-row': '88%', '--barrage-delay': '-20.2s', '--barrage-duration': '24s' },
+  },
+]
 const stageStyle = computed(() => ({
   backgroundImage: `url(${homeAsset('bg_rank_success.jpg')})`,
 }))
@@ -219,6 +244,8 @@ const p2MainColumns = computed(() =>
 )
 const p2GoodForChars = computed(() => splitSideGlyphs(p2Result.value.goodFor))
 const p2AvoidChars = computed(() => splitSideGlyphs(p2Result.value.avoid))
+const sharePosterSaveMessage = ref('')
+const sharePosterPreviewSrc = ref('')
 const p2PosterSaveMessage = ref('')
 const p2PosterPreviewSrc = ref('')
 const p2PanelTitle = computed(() => (p2Panel.value === 'poster' ? '分享' : '今日解签内容'))
@@ -264,7 +291,7 @@ const p4ClaimButtonText = computed(() => {
 })
 const p4ClaimButtonDisabled = computed(() => p4Status.value !== 'success' || p4ClaimStatus.value === 'claiming')
 const p2BenefitButtonDisabled = computed(() => p4Status.value === 'loading' || p4ClaimStatus.value === 'claiming')
-const shouldShowP4ClaimButton = computed(() => p4ClaimStatus.value !== 'claimed')
+const shouldShowP4ClaimButton = computed(() => p4Status.value === 'success')
 const p4ClaimTipText = computed(() => p4ClaimMessage.value)
 const handleP4ProductImageError = () => {
   p4ProductImageFailed.value = true
@@ -398,6 +425,13 @@ const p7QrcodeSrc = computed(() => {
 
   return p7Asset(qrcode)
 })
+const ACTIVITY_SHARE_POSTER_WIDTH = 941
+const ACTIVITY_SHARE_POSTER_HEIGHT = 1672
+const ACTIVITY_SHARE_POSTER_QR = {
+  left: 0.15,
+  top: 0.847,
+  size: 0.212,
+}
 const loadPosterCanvasImage = (src) =>
   new Promise((resolve, reject) => {
     const image = new Image()
@@ -425,25 +459,30 @@ const drawPosterText = (ctx, text, x, y, options = {}) => {
   })
   ctx.restore()
 }
-const savePosterRecord = async (imageDataUrl) => {
+const savePosterRecord = async (imageDataUrl, posterType = 'result_share') => {
   const savePoster = props.apiClient?.savePoster ?? activityApi.savePoster
   if (!savePoster) {
     return null
   }
 
-  return savePoster({
+  const payload = {
     session_token: sessionToken.value || undefined,
     page_code: currentPage.value,
-    poster_type: 'result_share',
-    draw_id: latestDrawId.value || undefined,
-    sign_text: {
+    poster_type: posterType,
+    image_data_url: imageDataUrl,
+  }
+
+  if (posterType === 'result_share') {
+    payload.draw_id = latestDrawId.value || undefined
+    payload.sign_text = {
       headline: p2FortuneHeadline.value,
       hint: p2FortuneHint.value,
       good_for: p2Result.value.goodFor,
       avoid: p2Result.value.avoid,
-    },
-    image_data_url: imageDataUrl,
-  })
+    }
+  }
+
+  return savePoster(payload)
 }
 const downloadPosterCanvas = (canvas) => {
   const download = (url) => {
@@ -469,104 +508,118 @@ const downloadPosterCanvas = (canvas) => {
 
   download(canvas.toDataURL('image/png'))
 }
-const saveP2Poster = async () => {
+const renderActivityPosterCanvas = async () => {
   if (typeof document === 'undefined') {
-    return
+    return null
   }
 
-  p2PosterSaveMessage.value = '海报生成中...'
+  let activityPoster = null
+  try {
+    activityPoster = await loadPosterCanvasImage(activitySharePosterSrc)
+  } catch {
+    activityPoster = null
+  }
+
   const canvas = document.createElement('canvas')
-  const width = 750
-  const height = 1080
+  const width = Number(activityPoster?.naturalWidth || activityPoster?.width) || ACTIVITY_SHARE_POSTER_WIDTH
+  const height = Number(activityPoster?.naturalHeight || activityPoster?.height) || ACTIVITY_SHARE_POSTER_HEIGHT
   const scale = 2
   canvas.width = width * scale
   canvas.height = height * scale
   const ctx = canvas.getContext('2d')
 
   if (!ctx) {
-    return
+    return null
   }
 
   ctx.scale(scale, scale)
-  ctx.fillStyle = '#f7ddb1'
-  ctx.fillRect(0, 0, width, height)
-  ctx.fillStyle = '#fff1cf'
-  ctx.fillRect(28, 28, width - 56, height - 56)
-
-  try {
-    const titleSign = await loadPosterCanvasImage(p4Asset('text_beef_super_luck_sign.png'))
-    ctx.drawImage(titleSign, 145, 58, 460, 112)
-  } catch {
-    drawPosterText(ctx, '牛气上上签', width / 2, 82, {
-      color: '#8f140d',
-      font: 'bold 48px KaiTi, STKaiti, serif',
+  if (activityPoster) {
+    ctx.drawImage(activityPoster, 0, 0, width, height)
+  } else {
+    ctx.fillStyle = '#b80606'
+    ctx.fillRect(0, 0, width, height)
+    drawPosterText(ctx, '高考抽签\n专属福利', width / 2, height * 0.24, {
+      color: '#fff4d2',
+      font: 'bold 76px Microsoft YaHei, sans-serif',
+      lineHeight: 96,
+      maxWidth: width * 0.8,
+    })
+    drawPosterText(ctx, '扫码参与高考抽签活动', width / 2, height * 0.78, {
+      color: '#ffe3a5',
+      font: 'bold 34px Microsoft YaHei, sans-serif',
+      maxWidth: width * 0.8,
     })
   }
-
-  drawPosterText(ctx, p2FortuneHeadline.value, width / 2, 215, {
-    color: '#562313',
-    font: 'bold 64px KaiTi, STKaiti, serif',
-    lineHeight: 72,
-  })
-  drawPosterText(ctx, p2FortuneHint.value, width / 2, 320, {
-    color: '#9a5d2d',
-    font: '26px KaiTi, STKaiti, serif',
-    lineHeight: 36,
-  })
-
-  ctx.fillStyle = 'rgba(133, 62, 24, 0.035)'
-  ctx.fillRect(118, 392, width - 236, 176)
-
-  drawPosterText(ctx, `${p2Result.value.goodFor}\n${p2Result.value.avoid}`, width / 2, 445, {
-    color: '#6a2b19',
-    font: 'bold 32px KaiTi, STKaiti, serif',
-    lineHeight: 58,
-    maxWidth: 580,
-  })
 
   try {
     if (p7QrcodeSrc.value) {
       const qrcode = await loadPosterCanvasImage(p7QrcodeSrc.value)
+      const qrSize = width * ACTIVITY_SHARE_POSTER_QR.size
+      const qrX = width * ACTIVITY_SHARE_POSTER_QR.left
+      const qrY = height * ACTIVITY_SHARE_POSTER_QR.top
       ctx.fillStyle = '#fff'
-      ctx.fillRect(268, 628, 214, 214)
-      ctx.drawImage(qrcode, 282, 642, 186, 186)
-      ctx.strokeStyle = '#080000'
-      ctx.lineWidth = 2
-      ctx.strokeRect(268, 628, 214, 214)
+      ctx.fillRect(qrX, qrY, qrSize, qrSize)
+      ctx.drawImage(qrcode, qrX, qrY, qrSize, qrSize)
     }
   } catch {
-    drawPosterText(ctx, '扫码参与活动', width / 2, 690, {
+    drawPosterText(ctx, '扫码参与活动', width * 0.256, height * 0.894, {
       color: '#8a2818',
-      font: '28px KaiTi, STKaiti, serif',
+      font: '20px Microsoft YaHei, sans-serif',
+      maxWidth: width * 0.18,
     })
   }
 
-  drawPosterText(ctx, '长按保存，扫码参与活动', width / 2, 880, {
-    color: '#8b4a24',
-    font: 'bold 28px Microsoft YaHei, sans-serif',
-  })
-  ctx.strokeStyle = '#080000'
-  ctx.lineWidth = 4
-  ctx.strokeRect(28, 28, width - 56, height - 56)
+  return canvas
+}
+const saveActivityPoster = async ({ posterType, setMessage, setPreview }) => {
+  setMessage('海报生成中...')
+  const canvas = await renderActivityPosterCanvas()
+
+  if (!canvas) {
+    setMessage('海报生成失败，请稍后重试')
+    return
+  }
 
   const imageDataUrl = canvas.toDataURL('image/png')
   try {
-    const result = await savePosterRecord(imageDataUrl)
-    p2PosterPreviewSrc.value = result?.poster_url || imageDataUrl
-    p2PosterSaveMessage.value = result?.saved ? '海报已保存，手机端请长按上方图片保存' : '海报已生成，手机端请长按上方图片保存'
+    const result = await savePosterRecord(imageDataUrl, posterType)
+    setPreview(result?.poster_url || imageDataUrl)
+    setMessage(result?.saved ? '海报已保存，手机端请长按上方图片保存' : '海报已生成，手机端请长按上方图片保存')
     trackEvent('poster_save_success', {
       poster_id: result?.poster_id,
       saved: Boolean(result?.saved),
+      poster_type: posterType,
     })
   } catch (error) {
-    p2PosterPreviewSrc.value = imageDataUrl
-    p2PosterSaveMessage.value = '海报已生成，接口保存失败，手机端请长按上方图片保存'
+    setPreview(imageDataUrl)
+    setMessage('海报已生成，接口保存失败，手机端请长按上方图片保存')
     trackEvent('poster_save_fail', {
       message: error instanceof Error ? error.message : 'poster save failed',
+      poster_type: posterType,
     })
   }
   downloadPosterCanvas(canvas)
 }
+const saveHomeSharePoster = () =>
+  saveActivityPoster({
+    posterType: 'home_share',
+    setMessage: (message) => {
+      sharePosterSaveMessage.value = message
+    },
+    setPreview: (src) => {
+      sharePosterPreviewSrc.value = src
+    },
+  })
+const saveP2Poster = () =>
+  saveActivityPoster({
+    posterType: 'result_share',
+    setMessage: (message) => {
+      p2PosterSaveMessage.value = message
+    },
+    setPreview: (src) => {
+      p2PosterPreviewSrc.value = src
+    },
+  })
 const openP7QrcodePreview = () => {
   trackP7QrcodeClick()
   if (p7QrcodeSrc.value) {
@@ -580,7 +633,7 @@ const p8HeroLines = computed(() => String(p8Prize.value.hero.title ?? '').split(
 const p8Qualification = computed(() => p8Prize.value.qualification)
 const p8LotteryStatus = computed(() => p8Prize.value.lottery_status)
 const p8WechatGroup = computed(() => p8Prize.value.wechat_group)
-const p8LotteryNoText = computed(() => p8Qualification.value.lottery_no || '抽奖编号生成中，请稍后刷新')
+const p8LotteryNoText = computed(() => p8Qualification.value.lottery_no || '')
 const p8QrcodeSrc = computed(() => {
   const qrcode = p8WechatGroup.value.qrcode_url
 
@@ -625,8 +678,17 @@ const handleP8QrcodeError = () => {
   trackP8QrcodeLoadFail()
 }
 
+watch(showShareGuide, (visible) => {
+  if (!visible) {
+    sharePosterSaveMessage.value = ''
+    sharePosterPreviewSrc.value = ''
+  }
+})
+
 watch(currentPage, () => {
   showP7QrcodePreview.value = false
+  sharePosterSaveMessage.value = ''
+  sharePosterPreviewSrc.value = ''
   p2PosterSaveMessage.value = ''
   p2PosterPreviewSrc.value = ''
   requestAnimationFrame(() => {
@@ -685,17 +747,30 @@ onBeforeUnmount(() => {
 <template>
   <main v-if="currentPage === 'home'" class="home-page" aria-label="P1 活动首页">
     <section class="home-stage" :style="stageStyle">
-      <img
-        class="brand-logo home-brand-logo"
-        data-testid="brand-logo-home"
-        :src="primeCutsLogoSrc"
-        alt=""
-      />
+      <div class="home-brand-wordmark" data-testid="brand-wordmark-home" aria-label="Prime Cuts 璞莱牧">
+        <span class="home-brand-wordmark-main">
+          <span>Prime</span>
+          <span>Cuts</span>
+        </span>
+        <span class="home-brand-wordmark-sub">璞莱牧</span>
+      </div>
 
       <button class="rule-entry" type="button" aria-label="活动规则" @click="goRules">
         <img :src="p6Asset('btn_activity_rules.png')" alt="" />
         <span class="sr-only">活动规则</span>
       </button>
+
+      <div class="home-barrage" data-testid="home-barrage" aria-hidden="true">
+        <span
+          v-for="item in homeBarrageItems"
+          :key="item.id"
+          class="home-barrage-item"
+          data-testid="home-barrage-item"
+          :style="item.style"
+        >
+          {{ item.text }}
+        </span>
+      </div>
 
       <span
         class="lottery-shadow"
@@ -732,21 +807,65 @@ onBeforeUnmount(() => {
       <p v-if="tipMessage" class="chance-tip" role="alert">{{ tipMessage }}</p>
 
       <nav class="bottom-nav" aria-label="首页快捷入口">
-        <button data-testid="home-rewards-entry" type="button" @click="goRewards">我的奖励</button>
+        <button data-testid="home-rewards-entry" type="button" @click="goRewards">每日打卡</button>
         <p aria-live="polite">{{ chanceText }}</p>
         <button data-testid="share-entry" type="button" @click="openShareGuide">分享获取次数</button>
       </nav>
     </section>
 
     <div v-if="showShareGuide" class="modal-mask" role="presentation">
-      <section class="share-dialog" role="dialog" aria-modal="true" aria-labelledby="share-title">
-        <h2 id="share-title">分享引导</h2>
-        <p>分享完成后可获得 1 次摇签机会，每日最多奖励 3 次。</p>
-        <strong>{{ shareProgressText }}</strong>
-        <div class="dialog-actions">
-          <button data-testid="share-complete" type="button" @click="completeShare">模拟完成分享</button>
-          <button type="button" @click="closeShareGuide">知道了</button>
-        </div>
+      <section
+        class="p2-poster-dialog home-share-poster-dialog"
+        data-testid="home-share-poster-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="share-title"
+      >
+        <h2 id="share-title" class="sr-only">分享引导</h2>
+        <button
+          class="p2-poster-dismiss"
+          data-testid="close-share-guide"
+          type="button"
+          aria-label="关闭"
+          @click="closeShareGuide"
+        >
+          <span class="sr-only">关闭</span>
+        </button>
+        <article v-if="!sharePosterPreviewSrc" class="p2-poster-card" data-testid="home-share-activity-poster">
+          <img
+            class="activity-share-poster-image"
+            :src="activitySharePosterSrc"
+            alt="高考抽签专属福利活动页"
+          />
+          <span class="activity-share-poster-qrcode">
+            <img
+              v-if="p7QrcodeSrc"
+              data-testid="home-share-qrcode"
+              :src="p7QrcodeSrc"
+              alt="活动二维码"
+              @error="handleP7QrcodeError"
+            />
+            <span v-else>二维码暂未配置</span>
+          </span>
+        </article>
+        <img
+          v-else
+          class="p2-poster-generated-preview"
+          data-testid="home-share-generated-preview"
+          :src="sharePosterPreviewSrc"
+          alt="生成的分享图片"
+        />
+        <button class="p2-poster-save" data-testid="save-home-share-poster" type="button" @click="saveHomeSharePoster">
+          保存
+        </button>
+        <p
+          v-if="sharePosterSaveMessage"
+          class="p2-poster-save-message"
+          data-testid="home-share-poster-save-message"
+          role="status"
+        >
+          {{ sharePosterSaveMessage }}
+        </p>
       </section>
     </div>
   </main>
@@ -759,12 +878,6 @@ onBeforeUnmount(() => {
   >
     <section class="p2-stage" :style="p2StageStyle">
       <h1 class="sr-only">六月考运签</h1>
-      <img
-        class="brand-logo p2-brand-logo"
-        data-testid="brand-logo-result"
-        :src="primeCutsLogoSrc"
-        alt=""
-      />
 
       <button
         class="p2-back-button"
@@ -887,20 +1000,11 @@ onBeforeUnmount(() => {
           type="button"
           @click="openP2Poster"
         >
-          保存海报分享
+          分享得好礼
         </button>
 
         <p v-if="p4ClaimTipText" class="p4-claim-tip" role="status">{{ p4ClaimTipText }}</p>
 
-        <button
-          v-if="p4ClaimStatus === 'claimed'"
-          class="p4-rewards-entry"
-          data-testid="p4-rewards-entry"
-          type="button"
-          @click="goRewards"
-        >
-          我的奖励
-        </button>
       </template>
     </section>
 
@@ -913,6 +1017,7 @@ onBeforeUnmount(() => {
         aria-modal="true"
         aria-labelledby="p2-poster-title"
       >
+        <h2 id="p2-poster-title" class="sr-only">分享得好礼</h2>
         <button
           class="p2-poster-dismiss"
           data-testid="close-p2-panel"
@@ -923,16 +1028,13 @@ onBeforeUnmount(() => {
           <span class="sr-only">关闭</span>
         </button>
         <article v-if="!p2PosterPreviewSrc" class="p2-poster-card" data-testid="p2-poster-card">
-          <img class="p2-poster-title-sign" :src="p4Asset('text_beef_super_luck_sign.png')" alt="" />
-          <section class="p2-poster-copy" aria-label="分享签文">
-            <h2 id="p2-poster-title">{{ p2FortuneHeadline }}</h2>
-            <p>{{ p2FortuneHint }}</p>
-          </section>
-          <div class="p2-poster-lines" aria-label="吉签内容">
-            <p>{{ p2Result.goodFor }}</p>
-            <p>{{ p2Result.avoid }}</p>
-          </div>
-          <div class="p2-poster-qrcode">
+          <img
+            class="activity-share-poster-image"
+            data-testid="p2-share-activity-poster"
+            :src="activitySharePosterSrc"
+            alt="高考抽签专属福利活动页"
+          />
+          <span class="activity-share-poster-qrcode">
             <img
               v-if="p7QrcodeSrc"
               data-testid="p2-poster-qrcode"
@@ -941,8 +1043,7 @@ onBeforeUnmount(() => {
               @error="handleP7QrcodeError"
             />
             <span v-else>二维码暂未配置</span>
-          </div>
-          <p class="p2-poster-tip">长按保存，扫码参与活动</p>
+          </span>
         </article>
         <img
           v-else
@@ -972,12 +1073,6 @@ onBeforeUnmount(() => {
   <main v-else-if="currentPage === 'p6'" class="p6-page" aria-label="P6 我的奖励页">
     <section class="p6-stage" :style="p6StageStyle">
       <h1 class="sr-only">{{ p6Center.page_title }}</h1>
-      <img
-        class="brand-logo p6-brand-logo"
-        data-testid="brand-logo-rewards"
-        :src="primeCutsLogoSrc"
-        alt=""
-      />
 
       <button class="p6-back-button" data-testid="p6-back" type="button" aria-label="返回" @click="goP6Back">
         <span class="sr-only">返回</span>
@@ -1104,18 +1199,18 @@ onBeforeUnmount(() => {
 
   <main v-else-if="currentPage === 'p8'" class="p8-page" aria-label="P8 大奖资格确认页">
     <section class="p8-stage" :style="p8StageStyle">
-      <button class="p8-back-button" data-testid="p8-back" type="button" aria-label="杩斿洖" @click="goP8Back">
-        <span class="sr-only">杩斿洖</span>
+      <button class="p8-back-button" data-testid="p8-back" type="button" aria-label="返回" @click="goP8Back">
+        <span class="sr-only">返回</span>
       </button>
 
-      <header class="p8-hero-copy" aria-label="澶у璧勬牸鏍囬">
+      <header class="p8-hero-copy" aria-label="大奖资格标题">
         <h1>
           <span v-for="line in p8HeroLines" :key="line">{{ line }}</span>
         </h1>
         <p>{{ p8Prize.hero.subtitle }}</p>
       </header>
 
-      <section class="p8-qualification-copy" aria-label="澶у璧勬牸淇℃伅">
+      <section class="p8-qualification-copy" aria-label="大奖资格信息">
         <h2>{{ p8Qualification.qualify_desc }}</h2>
         <p>{{ p8Qualification.prize_title }}</p>
         <ul>
@@ -1145,21 +1240,21 @@ onBeforeUnmount(() => {
 
       <div class="p8-qrcode-frame" data-testid="p8-qrcode" @click="trackP8QrcodeClick">
         <img v-if="p8QrcodeSrc" :src="p8QrcodeSrc" alt="企微二维码" @error="handleP8QrcodeError" />
-        <span v-else>浼佸井浜岀淮鐮佹殏鏈厤缃?</span>
+        <span v-else>企微二维码暂未配置</span>
       </div>
 
       <section v-if="!p8Qualification.qualified" class="p8-not-qualified" data-testid="p8-not-qualified" role="alert">
-        <strong>澶у璧勬牸鏆傛湭瑙ｉ攣</strong>
+        <strong>大奖资格暂未解锁</strong>
         <p>{{ p8Qualification.qualify_desc }}</p>
-        <button type="button" @click="goP8Back">杩斿洖鎴戠殑濂栧姳</button>
+        <button type="button" @click="goP8Back">返回我的奖励</button>
       </section>
     </section>
   </main>
 
   <main v-else-if="currentPage === 'rules'" class="p7-page" aria-label="P7 活动规则页" @scroll.passive="trackP7ScrollToBottom">
     <section class="p7-stage" :style="p7StageStyle">
-      <button class="p7-back-button" data-testid="p7-back" type="button" aria-label="杩斿洖" @click="goP7Back">
-        <span class="sr-only">杩斿洖</span>
+      <button class="p7-back-button" data-testid="p7-back" type="button" aria-label="返回" @click="goP7Back">
+        <span class="sr-only">返回</span>
       </button>
 
       <header class="p7-heading">
@@ -1167,8 +1262,8 @@ onBeforeUnmount(() => {
         <p>{{ p7Rules.subtitle }}</p>
       </header>
 
-      <section class="p7-rules-card" aria-label="娲诲姩瑙勫垯璇存槑">
-        <h2 class="sr-only">娲诲姩瑙勫垯璇存槑</h2>
+      <section class="p7-rules-card" aria-label="活动规则说明">
+        <h2 class="sr-only">活动规则说明</h2>
         <ol class="p7-rule-list">
           <li
             v-for="rule in p7Rules.rules"
@@ -1182,10 +1277,10 @@ onBeforeUnmount(() => {
         </ol>
       </section>
 
-      <section class="p7-wechat-card" aria-label="鎵爜娣诲姞浼佸井">
+      <section class="p7-wechat-card" aria-label="扫码添加企微">
         <div class="p7-qrcode-frame" @click="trackP7QrcodeClick">
           <img v-if="p7QrcodeSrc" :src="p7QrcodeSrc" alt="企微二维码" @error="handleP7QrcodeError" />
-          <span v-else>浜岀淮鐮佹殏鏈厤缃?</span>
+          <span v-else>二维码暂未配置</span>
         </div>
         <div class="p7-wechat-copy">
           <strong>{{ p7Rules.wechat_group.title }}</strong>
@@ -1207,9 +1302,9 @@ onBeforeUnmount(() => {
   </main>
 
   <section v-else class="placeholder-page">
-    <h1>P6 鎴戠殑濂栧姳椤靛崰浣?</h1>
-    <p>杩欓噷鍚庣画鎺ュ叆鎴戠殑鑰冭繍杩涘害鍜屽鍔变俊鎭€?</p>
-    <button type="button" @click="goHome">杩斿洖棣栭〉</button>
+    <h1>页面暂未开放</h1>
+    <p>请返回首页重新进入活动。</p>
+    <button type="button" @click="goHome">返回首页</button>
   </section>
 
   <div v-if="showP5ClaimSuccess" class="p5-popup-mask" role="presentation">
@@ -1228,10 +1323,10 @@ onBeforeUnmount(() => {
         class="p5-close-button"
         data-testid="p5-close"
         type="button"
-        aria-label="鍏抽棴"
+        aria-label="关闭"
         @click="closeP5ClaimSuccess"
       >
-        <span class="sr-only">鍏抽棴</span>
+        <span class="sr-only">关闭</span>
       </button>
 
       <section class="p5-coupon-card" :aria-label="p5Result.reward.couponName">
@@ -1301,7 +1396,7 @@ onBeforeUnmount(() => {
     v-if="showDrawAnimation"
     class="draw-animation-overlay"
     data-testid="draw-animation-overlay"
-    aria-label="鎶界鍔ㄧ敾"
+    aria-label="抽签动画"
   >
     <section class="draw-animation-shell" role="status" aria-live="polite">
       <video
@@ -1331,7 +1426,7 @@ onBeforeUnmount(() => {
         @animationend="completeDrawAnimation"
         @error="failDrawAnimation"
       >
-      <p v-if="drawAnimationStatus === 'waiting'" class="draw-animation-status">鎶界缁撴灉鐢熸垚涓?</p>
+      <p v-if="drawAnimationStatus === 'waiting'" class="draw-animation-status">抽签结果生成中</p>
     </section>
   </div>
 

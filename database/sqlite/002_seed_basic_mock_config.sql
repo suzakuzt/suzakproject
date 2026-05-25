@@ -175,13 +175,13 @@ INSERT INTO reward_config (
   ext_json
 )
 VALUES
-  ('gaokao_lucky_sign_2026', 'coupon_10', 'coupon', '无门槛10元券', '10', '无门槛券', '10元', '/assets/p6/element_coupon_10yuan_card.png', '去使用', 'mini_program_coupon_package', '/pages/coupon-package/index', 0, 'enabled', 10, '{"unit_text":"元","threshold_text":"无门槛","coupon_label":"优惠券"}'),
-  ('gaokao_lucky_sign_2026', 'coupon_20', 'coupon', '无门槛20元券', '20', '无门槛券', '20元', '/assets/p6/element_coupon_20yuan_card.png', '去使用', 'mini_program_coupon_package', '/pages/coupon-package/index', 0, 'enabled', 20, '{"unit_text":"元","threshold_text":"无门槛","p5_default":true}'),
-  ('gaokao_lucky_sign_2026', 'coupon_30', 'coupon', '无门槛30元券', '30', '无门槛券', '30元', '/assets/p6/element_coupon_30yuan_card.png', '去使用', 'mini_program_coupon_package', '/pages/coupon-package/index', 0, 'enabled', 30, '{"unit_text":"元","threshold_text":"无门槛"}'),
-  ('gaokao_lucky_sign_2026', 'discount_9', 'discount_coupon', '9折券', '9折', '全场可用', '9折', '/assets/p6/element_coupon_9off_card.png', '去使用', 'mini_program_coupon_package', '/pages/coupon-package/index', 0, 'enabled', 40, '{"unit_text":"","threshold_text":"全场可用"}'),
-  ('gaokao_lucky_sign_2026', 'discount_75', 'discount_coupon', '7.5折券', '7.5折', '西冷牛排专属', '7.5折', '/assets/p6/element_coupon_75off_card.png', '去使用', 'mini_program_coupon_package', '/pages/coupon-package/index', 0, 'enabled', 50, '{"unit_text":"","threshold_text":"西冷牛排专属"}'),
+  ('gaokao_lucky_sign_2026', 'coupon_10', 'coupon', '无门槛10元券', '10', '无门槛券', '10元', '/assets/p6/element_coupon_10yuan_card.png', '去使用', 'mini_program_coupon_package', '/pages/my-coupon/index', 0, 'enabled', 10, '{"unit_text":"元","threshold_text":"无门槛","coupon_label":"优惠券"}'),
+  ('gaokao_lucky_sign_2026', 'coupon_20', 'coupon', '无门槛20元券', '20', '无门槛券', '20元', '/assets/p6/element_coupon_20yuan_card.png', '去使用', 'mini_program_coupon_package', '/pages/my-coupon/index', 0, 'enabled', 20, '{"unit_text":"元","threshold_text":"无门槛","p5_default":true}'),
+  ('gaokao_lucky_sign_2026', 'coupon_30', 'coupon', '无门槛30元券', '30', '无门槛券', '30元', '/assets/p6/element_coupon_30yuan_card.png', '去使用', 'mini_program_coupon_package', '/pages/my-coupon/index', 0, 'enabled', 30, '{"unit_text":"元","threshold_text":"无门槛"}'),
+  ('gaokao_lucky_sign_2026', 'discount_9', 'discount_coupon', '9折券', '9折', '全场可用', '9折', '/assets/p6/element_coupon_9off_card.png', '去使用', 'mini_program_coupon_package', '/pages/my-coupon/index', 0, 'enabled', 40, '{"unit_text":"","threshold_text":"全场可用"}'),
+  ('gaokao_lucky_sign_2026', 'discount_75', 'discount_coupon', '7.5折券', '7.5折', '西冷牛排专属', '7.5折', '/assets/p6/element_coupon_75off_card.png', '去使用', 'mini_program_coupon_package', '/pages/my-coupon/index', 0, 'enabled', 50, '{"unit_text":"","threshold_text":"西冷牛排专属"}'),
   ('gaokao_lucky_sign_2026', 'gift_985', 'grand_prize', '985和牛礼盒', '985和牛礼盒', '抽奖资格', NULL, NULL, '未达标', 'gift_qualification_detail', '/activity/grand-prize', 1, 'enabled', 990, '{"locked_button_text":"未达标","unlocked_button_text":"去使用","reward_type_for_frontend":"gift_lottery_qualification"}'),
-  ('gaokao_lucky_sign_2026', 'coupon_50', 'coupon', '50元券', '50元券', '企微领取', '50元', NULL, '去领取', 'mini_program_coupon_package', '/pages/coupon-package/index', 0, 'enabled', 60, '{"source":"DEFAULT_P8_PRIZE.benefits"}')
+  ('gaokao_lucky_sign_2026', 'coupon_50', 'coupon', '50元券', '50元券', '企微领取', '50元', NULL, '去领取', 'mini_program_coupon_package', '/pages/my-coupon/index', 0, 'enabled', 60, '{"source":"DEFAULT_P8_PRIZE.benefits"}')
 ON CONFLICT(activity_code, reward_code) DO UPDATE SET
   reward_type = excluded.reward_type,
   reward_name = excluded.reward_name,
@@ -193,6 +193,40 @@ ON CONFLICT(activity_code, reward_code) DO UPDATE SET
   action_type = excluded.action_type,
   action_target = excluded.action_target,
   is_grand_prize = excluded.is_grand_prize,
+  status = excluded.status,
+  sort_order = excluded.sort_order,
+  ext_json = excluded.ext_json,
+  updated_at = CURRENT_TIMESTAMP;
+
+INSERT INTO coupon_issue_config (
+  activity_code,
+  reward_code,
+  issue_channel,
+  hermes_title,
+  hermes_id,
+  ref_id,
+  ref_type,
+  start_time,
+  end_time,
+  face_value,
+  status,
+  sort_order,
+  ext_json
+)
+VALUES
+  ('gaokao_lucky_sign_2026', 'coupon_10', 'hermes', '一举高中·无门槛10元优惠券', 2605150000000112, 2605150000000126, 1, '2026-05-15 11:00:00', '2026-06-30 23:59:59', '10', 'enabled', 10, '{"source":"portal.hermes.manualImport"}'),
+  ('gaokao_lucky_sign_2026', 'coupon_20', 'hermes', '一举高中·无门槛20元优惠券', 2605150000000112, 2605150000000126, 1, '2026-05-15 11:00:00', '2026-06-30 23:59:59', '20', 'disabled', 20, '{"source":"portal.hermes.manualImport"}'),
+  ('gaokao_lucky_sign_2026', 'coupon_30', 'hermes', '一举高中·无门槛30元优惠券', 2605150000000112, 2605150000000126, 1, '2026-05-15 11:00:00', '2026-06-30 23:59:59', '30', 'disabled', 30, '{"source":"portal.hermes.manualImport"}'),
+  ('gaokao_lucky_sign_2026', 'discount_9', 'hermes', '一举高中·9折优惠券', 2605150000000112, 2605150000000126, 1, '2026-05-15 11:00:00', '2026-06-30 23:59:59', '9', 'disabled', 40, '{"source":"portal.hermes.manualImport"}'),
+  ('gaokao_lucky_sign_2026', 'discount_75', 'hermes', '一举高中·7.5折优惠券', 2605150000000112, 2605150000000126, 1, '2026-05-15 11:00:00', '2026-06-30 23:59:59', '7.5', 'disabled', 50, '{"source":"portal.hermes.manualImport"}')
+ON CONFLICT(activity_code, reward_code, issue_channel) DO UPDATE SET
+  hermes_title = excluded.hermes_title,
+  hermes_id = excluded.hermes_id,
+  ref_id = excluded.ref_id,
+  ref_type = excluded.ref_type,
+  start_time = excluded.start_time,
+  end_time = excluded.end_time,
+  face_value = excluded.face_value,
   status = excluded.status,
   sort_order = excluded.sort_order,
   ext_json = excluded.ext_json,
@@ -215,23 +249,92 @@ INSERT INTO draw_result_config (
   sort_order,
   ext_json
 )
-VALUES (
-  'gaokao_lucky_sign_2026',
-  'sign_001',
-  '上上签',
-  '金榜题名签',
-  '金榜题名\n愿你落笔生花',
-  '肉质细嫩鲜香四溢',
-  '和牛好礼好运加持',
-  'AI解签结果',
-  '锦绣前程，步步生花\n实力如锦，终成佳绩\n心之所向，金榜题名',
-  '["高考好运","牛气补给"]',
-  'sku_001',
-  'coupon_20',
-  'enabled',
-  10,
-  '{"sign_type":"金榜题名签","main_text_columns":["金榜题名","愿你落笔生花"],"explain_text":"今日宜沉心静气，按自己的节奏稳扎稳打。先把确定会做的题拿稳，再从容攻克难题。","theme_text":"高考好运 × 牛气补给","benefit_id":"default-benefit","claim_button_text":"领取专属福利"}'
-)
+VALUES
+  (
+    'gaokao_lucky_sign_2026',
+    'sign_001',
+    '上上签',
+    '未名鲤跃MIT池',
+    '未名鲤跃MIT池',
+    '肉质细嫩鲜香四溢',
+    '和牛好礼好运加持',
+    'AI解签结果',
+    '北大锦鲤游进麻省理工实验室，理综题自动生成标准答案！',
+    '["高考好运","牛气补给","北大","MIT"]',
+    'sku_001',
+    'coupon_20',
+    'enabled',
+    10,
+    '{"sign_type":"未名鲤跃MIT池","main_text_columns":["未名鲤跃MIT池"],"explain_text":"北大锦鲤游进麻省理工实验室，理综题自动生成标准答案！","theme_text":"高考好运 × 牛气补给","benefit_id":"default-benefit","claim_button_text":"领取专属福利"}'
+  ),
+  (
+    'gaokao_lucky_sign_2026',
+    'sign_002',
+    '上上签',
+    '清华星链罩牛津',
+    '清华星链罩牛津',
+    '肉质细嫩鲜香四溢',
+    '和牛好礼好运加持',
+    'AI解签结果',
+    '清华小卫星群护住牛津钟楼，考场作文秒变莎翁手稿~',
+    '["高考好运","牛气补给","清华","牛津"]',
+    'sku_002',
+    'coupon_20',
+    'enabled',
+    20,
+    '{"sign_type":"清华星链罩牛津","main_text_columns":["清华星链罩牛津"],"explain_text":"清华小卫星群护住牛津钟楼，考场作文秒变莎翁手稿~","theme_text":"高考好运 × 牛气补给","benefit_id":"default-benefit","claim_button_text":"领取专属福利"}'
+  ),
+  (
+    'gaokao_lucky_sign_2026',
+    'sign_003',
+    '上上签',
+    '复旦光阶通哈佛',
+    '复旦光阶通哈佛',
+    '肉质细嫩鲜香四溢',
+    '和牛好礼好运加持',
+    'AI解签结果',
+    '光华楼的台阶直通哈佛图书馆，踩过的题全变送分项！',
+    '["高考好运","牛气补给","复旦","哈佛"]',
+    'sku_003',
+    'coupon_20',
+    'enabled',
+    30,
+    '{"sign_type":"复旦光阶通哈佛","main_text_columns":["复旦光阶通哈佛"],"explain_text":"光华楼的台阶直通哈佛图书馆，踩过的题全变送分项！","theme_text":"高考好运 × 牛气补给","benefit_id":"default-benefit","claim_button_text":"领取专属福利"}'
+  ),
+  (
+    'gaokao_lucky_sign_2026',
+    'sign_004',
+    '上上签',
+    '浙大鹰叼剑桥分',
+    '浙大鹰叼剑桥分',
+    '肉质细嫩鲜香四溢',
+    '和牛好礼好运加持',
+    'AI解签结果',
+    '求是神鹰飞越康河，叼回剑桥满分卷，错题统统喂鱼啦！',
+    '["高考好运","牛气补给","浙大","剑桥"]',
+    'sku_004',
+    'coupon_20',
+    'enabled',
+    40,
+    '{"sign_type":"浙大鹰叼剑桥分","main_text_columns":["浙大鹰叼剑桥分"],"explain_text":"求是神鹰飞越康河，叼回剑桥满分卷，错题统统喂鱼啦！","theme_text":"高考好运 × 牛气补给","benefit_id":"default-benefit","claim_button_text":"领取专属福利"}'
+  ),
+  (
+    'gaokao_lucky_sign_2026',
+    'sign_005',
+    '上上签',
+    '上交船载斯坦福',
+    '上交船载斯坦福',
+    '肉质细嫩鲜香四溢',
+    '和牛好礼好运加持',
+    'AI解签结果',
+    '上海交大龙舟摇进斯坦福校园，志愿表自动填满金offer！',
+    '["高考好运","牛气补给","上交","斯坦福"]',
+    'sku_001',
+    'coupon_20',
+    'enabled',
+    50,
+    '{"sign_type":"上交船载斯坦福","main_text_columns":["上交船载斯坦福"],"explain_text":"上海交大龙舟摇进斯坦福校园，志愿表自动填满金offer！","theme_text":"高考好运 × 牛气补给","benefit_id":"default-benefit","claim_button_text":"领取专属福利"}'
+  )
 ON CONFLICT(activity_code, result_code) DO UPDATE SET
   result_level = excluded.result_level,
   result_title = excluded.result_title,
