@@ -1,104 +1,102 @@
-# H5 活动文档总入口
+# 系统总览和上线核对
 
-> 更新时间：2026-05-21  
-> 当前阶段：本地 SQLite、FastAPI、Vue H5 主链路已跑通；P5 已完成「手机号领券弹窗」前后端改造，领券接口会保存手机号、脱敏手机号、`claim_no`、`claim_token` 和发券状态。
+本文保留当前项目上线需要看的主链路。详细接口见 `docs/INTERFACE_COVERAGE_CHECK.md`，数据库见 `docs/DATABASE_SCHEMA_DESIGN.md`。
 
-## 当前范围
+## 1. 架构
 
-| 模块 | 当前状态 | 说明 |
+```text
+用户浏览器 / 小程序 WebView
+  -> Vue H5: http://127.0.0.1:5173
+  -> Vite /api 代理
+  -> FastAPI: http://127.0.0.1:8000
+  -> SQLite 本地库
+```
+
+当前后端运行时使用 SQLite。MySQL 建表和 seed 脚本已准备，切线上 MySQL 前还需要接入 MySQL 驱动和连接适配层。
+
+## 2. 页面和业务流
+
+| 页面 | 路由 | 主要行为 | 主要接口 |
+| --- | --- | --- | --- |
+| P1 首页 | `/activity/home` | 创建会话、展示机会、抽签、分享加次数、进入奖励/规则 | `POST /api/h5/session/create`、`POST /api/draw/execute`、`POST /api/share/record` |
+| P2/P4 统一结果页 | `/activity/result` | 展示签文、真实牛肉图、AI 解签卷轴、分享保存、领取福利 | `GET /api/draw/result/detail`、`GET /api/explain/detail`、`POST /api/benefit/claim` |
+| P5 领券弹窗 | 全局弹窗 | 手机号校验、领取本次 draw 固定券、跳券包 | `POST /api/benefit/claim`、`GET /api/benefit/claim/resolve` |
+| P6 我的奖励 | `/activity/rewards` | 展示券、分享/点亮进度、再抽一次、进入大奖页 | `GET /api/reward/center/detail` |
+| P7 活动规则 | `/activity/rules` | 展示规则、企微二维码、返回来源页 | `GET /api/activity/rules/detail` |
+| P8 大奖资格 | `/activity/grand-prize` | 展示礼盒资格、抽奖编号、开奖状态、企微二维码 | `GET /api/grand-prize/qualification/detail` |
+
+`/activity/explain` 目前兼容到 P2/P4 统一结果页，不再作为独立 P4 页面维护。
+
+## 3. 主流程
+
+```text
+进入 P1
+  -> createSession 创建/恢复用户和每日状态
+  -> drawExecute 扣机会、生成 draw_record、固定签文和券
+  -> 进入 P2/P4 统一结果页
+  -> 用户可展开 AI 解签、保存分享图、领取专属福利
+  -> claimBenefit 写 reward_claim_record
+  -> P6 查看奖励中心
+  -> 满足分享/点亮条件后进入 P8 查看大奖资格
+```
+
+分享助力流程：
+
+```text
+用户点击分享获取次数
+  -> shareRecord 生成 share_token 并按每日上限加机会
+好友带 share_token 进入
+  -> createSession 记录来源
+  -> 好友完成 drawExecute 后写 share_assist_record
+  -> 刷新原用户 grand_prize_qualification
+```
+
+## 4. 关键数据表
+
+| 模块 | 表 |
+| --- | --- |
+| 活动配置 | `activity_config`、`activity_asset_config` |
+| 签文/商品/奖励配置 | `draw_result_config`、`product_recommend_config`、`reward_config` |
+| 用户和会话 | `activity_user`、`activity_session`、`user_daily_state` |
+| 抽签和机会 | `draw_record`、`draw_chance_log`、`checkin_record` |
+| 分享和助力 | `share_record`、`share_assist_record` |
+| 领券和大奖 | `reward_claim_record`、`grand_prize_qualification` |
+| 埋点 | `tracking_event` |
+
+## 5. 运行日志监控
+
+右上角接口调试浮层已移除，页面不再显示“接口 POST 200”。运行期问题统一通过 `src/utils/runtimeMonitor.js` 监听并上报到 `POST /api/tracking/event`。
+
+重点事件：
+
+| 事件 | 说明 |
+| --- | --- |
+| `runtime_page_node_missing` | P1、P2/P4、P6、P7、P8 关键节点缺失 |
+| `runtime_resource_load_error` | 图片、脚本、样式等资源加载失败 |
+| `runtime_console_warning` | 前端 warning |
+| `runtime_console_error` | 前端 error |
+| `runtime_unhandled_error` | 未捕获 JS 异常 |
+| `runtime_unhandled_rejection` | 未捕获 Promise 异常 |
+
+详细口径见 `docs/RUNTIME_MONITORING.md`。
+
+## 6. 上线核对
+
+| 项 | 当前状态 | 上线前动作 |
 | --- | --- | --- |
-| SQLite 数据库 | 已补齐 | 本地库 `backend/data/gaokao_h5_dev.sqlite3` 可跑通主流程；P5 手机号和 `claim_token` 字段已有迁移脚本 |
-| MySQL 脚本 | 已补齐 | `database/mysql/` 与 SQLite 保持同一业务结构；P5 新字段已同步到建表脚本 |
-| FastAPI 后端 | 已接入 | 已覆盖会话、抽签、解签、手机号领券、奖励中心、规则、985 资格、埋点 |
-| Vue H5 前端 | 已接入 | 正式访问路由使用 `/activity/...`；P5 已从成功提示浮层改为手机号输入弹窗 |
-| 小程序承接 | 待联调 | 券包页和商品详情页需要小程序 WebView 环境验证；领券跳转只传 `claim_token` / `claim_no`，不传手机号明文 |
+| 前端构建 | `npm run build` 可产出 `dist/` | 配置线上 CDN/静态服务和 `/api` 代理 |
+| 后端接口 | FastAPI 接口已覆盖主流程 | 配置生产 CORS、日志、错误监控 |
+| SQLite | 本地开发和测试可用 | 上线不建议继续使用单机 SQLite |
+| MySQL 脚本 | `database/mysql/001`、`002` 已准备 | 先 dry-run，再执行；随后接 MySQL 运行时驱动 |
+| AI 解签 | 未配置时有本地兜底文案 | 线上配置 AI Key、超时、降级策略 |
+| 发券 | 当前写领取记录和跳转动作 | 对接真实券包/商城核销接口 |
+| 海报保存 | 前端生成 PNG 后调用 `POST /api/poster/save` 落盘，返回 `poster_url`；移动端保留长按保存 | 生产配置 `GAOKAO_H5_POSTER_DIR` 到持久化目录 |
 
-## 本地启动
-
-后端：
-
-```powershell
-uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
-```
-
-前端：
+## 7. 必跑检查
 
 ```powershell
-npm run dev -- --host 127.0.0.1 --port 5173
-```
-
-本地入口：
-
-```txt
-http://127.0.0.1:5173/activity/home
-```
-
-接口文档：
-
-```txt
-http://127.0.0.1:8000/docs
-```
-
-## 测试命令
-
-```powershell
-python -m unittest discover backend.tests -v
 npm test
 npm run build
+python -m unittest discover backend.tests -v
+python scripts/prepare_mysql.py
 ```
-
-## 必读文档
-
-| 顺序 | 文档 | 用途 |
-| --- | --- | --- |
-| 1 | `docs/README.md` | 当前状态、启动方式、文档入口 |
-| 2 | `docs/INTERFACE_COVERAGE_CHECK.md` | 前后端接口、埋点、当前覆盖状态 |
-| 3 | `docs/DATABASE_SCHEMA_DESIGN.md` | 数据库结构、P5 手机号领券字段、SQLite/MySQL 同步口径 |
-| 4 | `docs/P1_FRONTEND_INTERFACE_CHECK.md` | 页面路由、按钮跳转、前端请求总检查 |
-| 5 | `docs/p5/P5_手机号领券弹窗确认版_Agent交付卡_v1.1.md` | P5 最新业务确认版 |
-| 6 | `backend/README.md` | 后端接口、测试和运行方式 |
-| 7 | `database/mysql/README.md` | MySQL 迁移脚本说明 |
-
-## 页面命名
-
-| 业务页面 | 代码页面 | 本地预览 URL | 当前定位 |
-| --- | --- | --- | --- |
-| 活动首页 | `home` | `/activity/home` | P1 入口页 |
-| 抽签结果 | `p2` | `/activity/result` | 今日考运签结果 |
-| AI 解签 | `p4` | `/activity/explain` | 解签结果和福利入口 |
-| 手机号领券弹窗 | P4 内弹窗 | 无独立页面 | P5，输入手机号后提交领券 |
-| 我的奖励 | `p6` | `/activity/rewards` | 展示已领取和未领取奖励状态 |
-| 活动规则 | `rules` | `/activity/rules` | P7 规则页 |
-| 985 资格 | `p8` | `/activity/grand-prize` | P8 大奖资格确认页 |
-
-兼容说明：`?page=p1/p2/p4/p6/p7/p8` 只用于早期截图预览兼容；正式测试和对外访问统一使用 `/activity/...` 路由。
-
-## P5 最新领券口径
-
-1. P4 点击「领取专属福利」只打开 P5 手机号领券弹窗，不直接调用领券接口。
-2. P5 展示手机号输入框、优惠券卡和「去领取」按钮。
-3. 用户必须输入合法手机号后，前端才调用 `POST /api/benefit/claim`。
-4. 后端保存手机号、脱敏手机号、领取单号 `claim_no`、领取凭证 `claim_token` 和发券状态。
-5. 小程序承接使用 `claim_token` / `claim_no` 识别领取记录，不在 URL、埋点和普通日志中传手机号明文。
-6. 手机号保存 / 绑定成功后，H5 不停留在“领取成功”弹窗内，直接按接口返回的 action 跳小程序券包 / 领券中心；用户在小程序登录后到领券中心查看可领取券。
-7. P6 只有在领券接口成功后，才把该券视为已领取；未领取奖励仍展示为「未领取」。
-8. P5 券在 `POST /api/draw/execute` 生成 `draw_record` 时即固定写入当前 `draw_id`，P5 轮换池包含 5 张券：`coupon_10`、`coupon_20`、`coupon_30`、`discount_9`、`discount_75`。同一 `draw_id` 反复打开 P5 不会换券，只有重新抽签生成新 `draw_id` 才会分配下一张券，避免用户通过反复打开弹窗刷更高券。
-9. P5 券图走配置：后端优先返回 `reward_config.ext_json.p5_image_url`，其次返回 `activity_asset_config.fallback_url`，最后才用 `reward_config.reward_image_url`。前端只展示接口返回的 `reward.imageUrl` / `reward.image_url`，替换图片不需要改前端代码。
-
-## 当前 P5 改造结果
-
-| 位置 | 当前代码状态 | 说明 |
-| --- | --- | --- |
-| P4 按钮 | 点击后打开 P5 手机号弹窗 | 不直接调用领券接口 |
-| `POST /api/benefit/randomize` | 兼容旧入口，返回当前 draw 固定券 | 不重新绑定、不排除、不重掷，防止刷券 |
-| P5 浮层 | 手机号输入 + 去领取 | 提交成功后自动承接小程序券包，不停留成功态 |
-| P5 券图 | 读取接口返回的 `reward.imageUrl` | 图片可通过 `activity_asset_config.fallback_url` 或 `reward_config.ext_json.p5_image_url` 替换 |
-| `POST /api/benefit/claim` | `mobile` 必传并校验 | 返回 `claim_no` / `claim_token` |
-| `reward_claim_record` | 已保存手机号、脱敏手机号、`claim_token`、发券状态 | SQLite/MySQL 脚本均已补齐 |
-| 埋点 | 已新增手机号弹窗曝光、输入、提交、校验失败事件 | 不上传手机号明文 |
-
-## 剩余事项
-
-1. 小程序券包页使用 `claim_token` 解析领取记录的接口需要与商城/小程序确认。
-2. 分享海报 `POST /api/poster/generate` 仍是二期能力，主流程稳定后再补。
-3. 当前 seed 是最小配置，流程走通后再补全全量签文、优惠券、商品和图片配置。

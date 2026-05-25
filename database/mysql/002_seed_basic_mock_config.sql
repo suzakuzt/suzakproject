@@ -45,7 +45,7 @@ INSERT INTO activity_asset_config (
   activity_code, asset_key, asset_type, asset_url, fallback_url, title, status, sort_order, ext_json
 )
 VALUES
-  ('gaokao_lucky_sign_2026', 'p4_beef_product_image', 'product_image', '/assets/p4/card_beef_photo.png', NULL, '和牛商品图', 'enabled', 10, '{"source":"DEFAULT_P4_DETAIL.product.productImage"}'),
+  ('gaokao_lucky_sign_2026', 'p4_beef_product_image', 'product_image', '/assets/p4/product_flat_iron_steak.png', NULL, '和牛商品图', 'enabled', 10, '{"source":"DEFAULT_P4_DETAIL.product.productImage"}'),
   ('gaokao_lucky_sign_2026', 'p7_wechat_group_qrcode', 'qrcode', '/assets/p7/qrcode_wechat_group.png', NULL, '活动规则页企微二维码', 'enabled', 20, '{"source":"DEFAULT_P7_RULES.wechat_group.qrcode_url"}'),
   ('gaokao_lucky_sign_2026', 'p8_wechat_qrcode', 'qrcode', '/assets/p8/qrcode_grand_prize_wechat.png', NULL, '大奖资格页企微二维码', 'enabled', 30, '{"qrcode_id":"grand_prize_wechat_default","source":"DEFAULT_P8_PRIZE.wechat_group.qrcode_url"}'),
   ('gaokao_lucky_sign_2026', 'coupon_10_image', 'reward_image', '/assets/p6/element_coupon_10yuan_card.png', '/assets/p5/element_coupon_10yuan_card.png', '10 元券图', 'enabled', 110, '{"reward_code":"coupon_10"}'),
@@ -66,20 +66,63 @@ INSERT INTO product_recommend_config (
   activity_code, product_code, product_id, product_name, product_desc, product_image_url,
   price_text, action_type, action_target, status, sort_order, ext_json
 )
-VALUES (
-  'gaokao_lucky_sign_2026',
-  'sku_001',
-  'sku_001',
-  '高考成功牛排',
-  '精选谷饲西冷，鲜嫩多汁更满足',
-  '/assets/p4/card_beef_photo.png',
-  NULL,
-  'mini_program_product_detail',
-  '/pages/product/detail?id=sku_001',
-  'enabled',
-  10,
-  '{"button_text":"去看看","p4_product_name":"和牛 · 锦绣前程板腱","p4_product_id":"default-beef-card"}'
-)
+VALUES
+  (
+    'gaokao_lucky_sign_2026',
+    'sku_001',
+    'sku_001',
+    '高考成功牛排',
+    '板腱牛排肉质细嫩，适合考前牛气补给',
+    '/assets/p4/product_flat_iron_steak.png',
+    NULL,
+    'mini_program_product_detail',
+    '/pages/product/detail?id=sku_001',
+    'enabled',
+    10,
+    '{"button_text":"去看看","p4_product_name":"和牛 · 锦绣前程板腱","p4_product_id":"default-beef-card"}'
+  ),
+  (
+    'gaokao_lucky_sign_2026',
+    'sku_002',
+    'sku_002',
+    '牛气满格眼肉牛排',
+    '眼肉牛排油花丰润，适合好运加餐',
+    '/assets/p4/product_ribeye_steak.png',
+    NULL,
+    'mini_program_product_detail',
+    '/pages/product/detail?id=sku_002',
+    'enabled',
+    20,
+    '{"button_text":"去看看","p4_product_name":"和牛 · 牛气满格眼肉","p4_product_id":"ribeye-beef-card"}'
+  ),
+  (
+    'gaokao_lucky_sign_2026',
+    'sku_003',
+    'sku_003',
+    '金榜题名西冷牛排',
+    '西冷牛排肉香浓郁，适合稳定发挥',
+    '/assets/p4/product_sirloin_steak.png',
+    NULL,
+    'mini_program_product_detail',
+    '/pages/product/detail?id=sku_003',
+    'enabled',
+    30,
+    '{"button_text":"去看看","p4_product_name":"和牛 · 金榜题名西冷","p4_product_id":"sirloin-beef-card"}'
+  ),
+  (
+    'gaokao_lucky_sign_2026',
+    'sku_004',
+    'sku_004',
+    '顺势高中菲力牛排',
+    '菲力牛排口感细嫩，适合轻松备考',
+    '/assets/p4/product_tenderloin_steak.png',
+    NULL,
+    'mini_program_product_detail',
+    '/pages/product/detail?id=sku_004',
+    'enabled',
+    40,
+    '{"button_text":"去看看","p4_product_name":"和牛 · 顺势高中菲力","p4_product_id":"tenderloin-beef-card"}'
+  )
 ON DUPLICATE KEY UPDATE
   product_id = VALUES(product_id),
   product_name = VALUES(product_name),
@@ -129,8 +172,8 @@ VALUES (
   '上上签',
   '金榜题名签',
   '金榜题名\n愿你落笔生花',
-  '稳住心态、认真审题、从容落笔',
-  '慌乱失分、粗心失分、临场焦虑',
+  '肉质细嫩鲜香四溢',
+  '和牛好礼好运加持',
   'AI解签结果',
   '锦绣前程，步步生花\n实力如锦，终成佳绩\n心之所向，金榜题名',
   '["高考好运","牛气补给"]',

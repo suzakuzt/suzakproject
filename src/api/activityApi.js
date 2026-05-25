@@ -90,4 +90,5 @@ export const activityApi = {
     request('/api/grand-prize/qualification/detail', { params: { session_token } }),
   getRulesDetail: (params = {}) => request('/api/activity/rules/detail', { params }),
   trackEvent: (body) => request('/api/tracking/event', { method: 'POST', body }),
+  savePoster: (body) => request('/api/poster/save', { method: 'POST', body }),
 }

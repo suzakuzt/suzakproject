@@ -20,6 +20,7 @@ backend/.env
 *.pyc
 __pycache__/
 backend/data/*.bak-*
+backend/data/posters/
 tmp_*.png
 tmp_*.jpg
 

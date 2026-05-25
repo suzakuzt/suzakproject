@@ -1,6 +1,7 @@
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -22,6 +23,7 @@ from .activity_service import (
     resolve_claim_by_token,
 )
 from .health import build_health_status
+from .poster_service import resolve_poster_path, save_poster
 
 
 app = FastAPI(
@@ -88,6 +90,17 @@ class TrackingEventRequest(BaseModel):
     event_name: str
     event_payload: dict[str, Any] = Field(default_factory=dict)
     client_time: str | None = None
+
+
+class PosterSaveRequest(BaseModel):
+    session_token: str | None = None
+    activity_code: str | None = None
+    page_code: str | None = None
+    poster_type: str | None = None
+    draw_id: int | None = None
+    result_code: str | None = None
+    sign_text: dict[str, Any] = Field(default_factory=dict)
+    image_data_url: str = Field(..., min_length=32)
 
 
 def _handle_api_error(error: ApiError):
@@ -209,3 +222,20 @@ def tracking_event(request: TrackingEventRequest):
         return record_tracking_event(request.model_dump())
     except ApiError as error:
         _handle_api_error(error)
+
+
+@app.post("/api/poster/save")
+def poster_save(request: PosterSaveRequest):
+    try:
+        return save_poster(request.model_dump())
+    except ApiError as error:
+        _handle_api_error(error)
+
+
+@app.get("/api/poster/image/{poster_id}")
+def poster_image(poster_id: str):
+    poster_path = resolve_poster_path(poster_id)
+    if poster_path is None:
+        raise HTTPException(status_code=404, detail="poster not found")
+
+    return FileResponse(poster_path, media_type="image/png")

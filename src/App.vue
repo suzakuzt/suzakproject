@@ -1,6 +1,8 @@
-<script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+﻿<script setup>
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { activityApi } from './api/activityApi'
 import { useP1Activity } from './composables/useP1Activity'
+import { installRuntimeMonitor } from './utils/runtimeMonitor'
 
 const props = defineProps({
   initialPage: {
@@ -79,7 +81,9 @@ const {
   goRules,
   handleDraw,
   isDrawTemporarilyDisabled,
+  latestDrawId,
   openP2Explain,
+  openP2Benefit,
   openP2Poster,
   openShareGuide,
   p2Panel,
@@ -88,6 +92,7 @@ const {
   p4ClaimMessage,
   p4ClaimStatus,
   p4Detail,
+  p4ExplainVisible,
   p4VisibleThinkingLines,
   p4Status,
   p5ClaimStatus,
@@ -113,6 +118,7 @@ const {
   retryP6Center,
   retryP2Result,
   shareProgressText,
+  sessionToken,
   showDrawAnimation,
   showShareGuide,
   showP5ClaimSuccess,
@@ -126,6 +132,7 @@ const {
   useP5Benefit,
   focusP5MobileInput,
   submitP5MobileClaim,
+  trackEvent,
 } = useP1Activity({
   ...props,
   initialPage: props.initialPage ?? queryInitialPage ?? pathInitialPage,
@@ -133,9 +140,10 @@ const {
 })
 
 const chanceText = computed(() => `我的摇签机会 ${drawChance.value}次`)
+const commonAsset = (name) => `${import.meta.env.BASE_URL}assets/common/${name}`
 const homeAsset = (name) => `${import.meta.env.BASE_URL}assets/home/${name}`
+const primeCutsLogoSrc = commonAsset('element_prime_cuts_logo.png')
 const drawAnimationWebmSrc = homeAsset('CQ2-transparent-3s.webm')
-const drawAnimationVideoSrc = homeAsset('CQ2-3s.mp4')
 const p2Asset = (name) => `${import.meta.env.BASE_URL}assets/p2/${name}`
 const p4Asset = (name) => `${import.meta.env.BASE_URL}assets/p4/${name}`
 const p5Asset = (name) => `${import.meta.env.BASE_URL}assets/p5/${name}`
@@ -149,11 +157,28 @@ const stageStyle = computed(() => ({
 const playDrawAnimation = (event) => {
   event.currentTarget?.play?.().catch(() => {})
 }
+const canUseTransparentDrawVideo = computed(() => {
+  if (typeof document === 'undefined' || typeof navigator === 'undefined') {
+    return false
+  }
+
+  const userAgent = navigator.userAgent || ''
+  if (/MicroMessenger|iPhone|iPad|iPod/i.test(userAgent)) {
+    return false
+  }
+
+  const video = document.createElement('video')
+  return Boolean(
+    video.canPlayType('video/webm; codecs="vp9"') ||
+      video.canPlayType('video/webm; codecs="vp8"') ||
+      video.canPlayType('video/webm'),
+  )
+})
 const p2StageStyle = computed(() => ({
-  backgroundImage: `url(${p2Asset('bg_sign_page_clean.jpg')})`,
+  backgroundImage: `url(${p4Asset('bg_ai_result_page.png')})`,
 }))
 const p4StageStyle = computed(() => ({
-  backgroundImage: `url(${p4Asset('bg_ai_result_page.jpg')})`,
+  backgroundImage: `url(${p4Asset('bg_ai_result_page.png')})`,
 }))
 const p6StageStyle = computed(() => ({
   backgroundImage: `url(${p6Asset('bg_exam_progress_page.jpg')})`,
@@ -164,12 +189,14 @@ const p7StageStyle = computed(() => ({
 const p8StageStyle = computed(() => ({
   backgroundImage: `url(${p8Asset('bg_checkin_reward_result_page.png')})`,
 }))
-const p2SignTag = computed(() => `${p2Result.value.signType} · ${p2Result.value.signLevel}`)
+const p2SignTag = computed(() => `${p2Result.value.signType} 路 ${p2Result.value.signLevel}`)
+const p2FortuneHeadline = computed(() => p2Result.value.fortuneHeadline || '拨云见吉')
+const p2FortuneHint = computed(() => p2Result.value.fortuneHint || '轻轻划开，解锁 AI 解签')
 const splitGlyphs = (text = '') => Array.from(text)
 const P2_SIDE_COMFORT_GLYPH_LIMIT = 10
 const P2_SIDE_MAX_GLYPH_LIMIT = 12
 const getP2SideGlyphs = (text = '') =>
-  splitGlyphs(text).filter((char) => !['、', '，', '。', '；', '：', ',', ';', ':', ' '].includes(char))
+  splitGlyphs(text).filter((char) => !['。', '，', '、', '；', '：', ',', ';', ':', ' '].includes(char))
 const splitSideGlyphs = (text = '') => {
   const glyphs = getP2SideGlyphs(text)
 
@@ -192,47 +219,21 @@ const p2MainColumns = computed(() =>
 )
 const p2GoodForChars = computed(() => splitSideGlyphs(p2Result.value.goodFor))
 const p2AvoidChars = computed(() => splitSideGlyphs(p2Result.value.avoid))
-const p2PanelTitle = computed(() => (p2Panel.value === 'poster' ? '分享海报占位' : '今日解签内容'))
+const p2PosterSaveMessage = ref('')
+const p2PosterPreviewSrc = ref('')
+const p2PanelTitle = computed(() => (p2Panel.value === 'poster' ? '分享' : '今日解签内容'))
 const p2PanelText = computed(() => {
   if (p2Panel.value === 'poster') {
-    return '后续接入 POST /api/poster/generate，生成当前签文分享海报。'
+    return '后续接入 POST /api/poster/generate，生成当前签文分享内容。'
   }
 
   return `${p2Result.value.explainText} 后续接入 GET /api/explain/detail。`
 })
-const showLocalApiDebugPanel = import.meta.env.DEV
-const debugPanelExpanded = ref(false)
-const debugApiEntries = ref([])
-const formatDebugApiUrl = (url) => {
-  try {
-    const parsed = new URL(url)
-    return `${parsed.pathname}${parsed.search}`
-  } catch {
-    return url
-  }
-}
-const handleDebugApiLog = (event) => {
-  const entry = event.detail ?? {}
-  debugApiEntries.value = [
-    {
-      ...entry,
-      displayUrl: formatDebugApiUrl(entry.url ?? ''),
-    },
-    ...debugApiEntries.value,
-  ].slice(0, 8)
-}
-const latestDebugEntry = computed(() => debugApiEntries.value[0])
-const debugPanelSummary = computed(() => {
-  if (!latestDebugEntry.value) {
-    return '待命'
-  }
-
-  return `${latestDebugEntry.value.method} ${latestDebugEntry.value.status}`
-})
+let runtimeMonitor
 const p4ProductImageFailed = ref(false)
 const resolveP4ProductImage = (image) => {
   if (!image || p4ProductImageFailed.value) {
-    return p4Asset('card_beef_photo.png')
+    return p4Asset('product_flat_iron_steak.png')
   }
 
   if (image.startsWith('http') || image.startsWith('/')) {
@@ -262,6 +263,7 @@ const p4ClaimButtonText = computed(() => {
   return p4Detail.value.benefit.claimButtonText || '领取专属福利'
 })
 const p4ClaimButtonDisabled = computed(() => p4Status.value !== 'success' || p4ClaimStatus.value === 'claiming')
+const p2BenefitButtonDisabled = computed(() => p4Status.value === 'loading' || p4ClaimStatus.value === 'claiming')
 const shouldShowP4ClaimButton = computed(() => p4ClaimStatus.value !== 'claimed')
 const p4ClaimTipText = computed(() => p4ClaimMessage.value)
 const handleP4ProductImageError = () => {
@@ -299,6 +301,7 @@ const handleP5PrimaryAction = () => {
 const p6ProductImageFailed = ref(false)
 const p7QrcodeFailed = ref(false)
 const p8QrcodeFailed = ref(false)
+const showP7QrcodePreview = ref(false)
 const p6Progress = computed(() => p6Center.value.progress)
 const p6ShareCount = computed(() => Number(p6Progress.value.shared_count) || 0)
 const p6ShareTarget = computed(() => Number(p6Progress.value.share_target) || 5)
@@ -372,14 +375,14 @@ const resolveP6AssetUrl = (value) => {
 const resolveP6RewardImage = (reward) => resolveP6AssetUrl(resolveP6RewardImageName(reward))
 const resolveP6ProductImage = (image) => {
   if (!image || p6ProductImageFailed.value) {
-    return p4Asset('card_beef_photo.png')
+    return p4Asset('product_flat_iron_steak.png')
   }
 
   if (image.startsWith('http') || image.startsWith('/')) {
     return image
   }
 
-  return image.startsWith('card_') ? p4Asset(image) : p6Asset(image)
+  return image.startsWith('card_') || image.startsWith('product_') ? p4Asset(image) : p6Asset(image)
 }
 const p6ProductImageSrc = computed(() => resolveP6ProductImage(p6Product.value?.image_url))
 const p7QrcodeSrc = computed(() => {
@@ -395,6 +398,184 @@ const p7QrcodeSrc = computed(() => {
 
   return p7Asset(qrcode)
 })
+const loadPosterCanvasImage = (src) =>
+  new Promise((resolve, reject) => {
+    const image = new Image()
+    image.crossOrigin = 'anonymous'
+    image.onload = () => resolve(image)
+    image.onerror = reject
+    image.src = src
+  })
+const drawPosterText = (ctx, text, x, y, options = {}) => {
+  const {
+    color = '#6a2b19',
+    font = '28px KaiTi, STKaiti, serif',
+    lineHeight = 40,
+    maxWidth = 620,
+  } = options
+  const lines = String(text || '').split('\n').filter(Boolean)
+
+  ctx.save()
+  ctx.fillStyle = color
+  ctx.font = font
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'top'
+  lines.forEach((line, index) => {
+    ctx.fillText(line, x, y + index * lineHeight, maxWidth)
+  })
+  ctx.restore()
+}
+const savePosterRecord = async (imageDataUrl) => {
+  const savePoster = props.apiClient?.savePoster ?? activityApi.savePoster
+  if (!savePoster) {
+    return null
+  }
+
+  return savePoster({
+    session_token: sessionToken.value || undefined,
+    page_code: currentPage.value,
+    poster_type: 'result_share',
+    draw_id: latestDrawId.value || undefined,
+    sign_text: {
+      headline: p2FortuneHeadline.value,
+      hint: p2FortuneHint.value,
+      good_for: p2Result.value.goodFor,
+      avoid: p2Result.value.avoid,
+    },
+    image_data_url: imageDataUrl,
+  })
+}
+const downloadPosterCanvas = (canvas) => {
+  const download = (url) => {
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `牛气上上签-${Date.now()}.png`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+  }
+
+  if (canvas.toBlob) {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        return
+      }
+      const url = URL.createObjectURL(blob)
+      download(url)
+      window.setTimeout(() => URL.revokeObjectURL(url), 1200)
+    }, 'image/png')
+    return
+  }
+
+  download(canvas.toDataURL('image/png'))
+}
+const saveP2Poster = async () => {
+  if (typeof document === 'undefined') {
+    return
+  }
+
+  p2PosterSaveMessage.value = '海报生成中...'
+  const canvas = document.createElement('canvas')
+  const width = 750
+  const height = 1080
+  const scale = 2
+  canvas.width = width * scale
+  canvas.height = height * scale
+  const ctx = canvas.getContext('2d')
+
+  if (!ctx) {
+    return
+  }
+
+  ctx.scale(scale, scale)
+  ctx.fillStyle = '#f7ddb1'
+  ctx.fillRect(0, 0, width, height)
+  ctx.fillStyle = '#fff1cf'
+  ctx.fillRect(28, 28, width - 56, height - 56)
+
+  try {
+    const titleSign = await loadPosterCanvasImage(p4Asset('text_beef_super_luck_sign.png'))
+    ctx.drawImage(titleSign, 145, 58, 460, 112)
+  } catch {
+    drawPosterText(ctx, '牛气上上签', width / 2, 82, {
+      color: '#8f140d',
+      font: 'bold 48px KaiTi, STKaiti, serif',
+    })
+  }
+
+  drawPosterText(ctx, p2FortuneHeadline.value, width / 2, 215, {
+    color: '#562313',
+    font: 'bold 64px KaiTi, STKaiti, serif',
+    lineHeight: 72,
+  })
+  drawPosterText(ctx, p2FortuneHint.value, width / 2, 320, {
+    color: '#9a5d2d',
+    font: '26px KaiTi, STKaiti, serif',
+    lineHeight: 36,
+  })
+
+  ctx.fillStyle = 'rgba(133, 62, 24, 0.035)'
+  ctx.fillRect(118, 392, width - 236, 176)
+
+  drawPosterText(ctx, `${p2Result.value.goodFor}\n${p2Result.value.avoid}`, width / 2, 445, {
+    color: '#6a2b19',
+    font: 'bold 32px KaiTi, STKaiti, serif',
+    lineHeight: 58,
+    maxWidth: 580,
+  })
+
+  try {
+    if (p7QrcodeSrc.value) {
+      const qrcode = await loadPosterCanvasImage(p7QrcodeSrc.value)
+      ctx.fillStyle = '#fff'
+      ctx.fillRect(268, 628, 214, 214)
+      ctx.drawImage(qrcode, 282, 642, 186, 186)
+      ctx.strokeStyle = '#080000'
+      ctx.lineWidth = 2
+      ctx.strokeRect(268, 628, 214, 214)
+    }
+  } catch {
+    drawPosterText(ctx, '扫码参与活动', width / 2, 690, {
+      color: '#8a2818',
+      font: '28px KaiTi, STKaiti, serif',
+    })
+  }
+
+  drawPosterText(ctx, '长按保存，扫码参与活动', width / 2, 880, {
+    color: '#8b4a24',
+    font: 'bold 28px Microsoft YaHei, sans-serif',
+  })
+  ctx.strokeStyle = '#080000'
+  ctx.lineWidth = 4
+  ctx.strokeRect(28, 28, width - 56, height - 56)
+
+  const imageDataUrl = canvas.toDataURL('image/png')
+  try {
+    const result = await savePosterRecord(imageDataUrl)
+    p2PosterPreviewSrc.value = result?.poster_url || imageDataUrl
+    p2PosterSaveMessage.value = result?.saved ? '海报已保存，手机端请长按上方图片保存' : '海报已生成，手机端请长按上方图片保存'
+    trackEvent('poster_save_success', {
+      poster_id: result?.poster_id,
+      saved: Boolean(result?.saved),
+    })
+  } catch (error) {
+    p2PosterPreviewSrc.value = imageDataUrl
+    p2PosterSaveMessage.value = '海报已生成，接口保存失败，手机端请长按上方图片保存'
+    trackEvent('poster_save_fail', {
+      message: error instanceof Error ? error.message : 'poster save failed',
+    })
+  }
+  downloadPosterCanvas(canvas)
+}
+const openP7QrcodePreview = () => {
+  trackP7QrcodeClick()
+  if (p7QrcodeSrc.value) {
+    showP7QrcodePreview.value = true
+  }
+}
+const closeP7QrcodePreview = () => {
+  showP7QrcodePreview.value = false
+}
 const p8HeroLines = computed(() => String(p8Prize.value.hero.title ?? '').split(/\n/).filter(Boolean))
 const p8Qualification = computed(() => p8Prize.value.qualification)
 const p8LotteryStatus = computed(() => p8Prize.value.lottery_status)
@@ -445,6 +626,9 @@ const handleP8QrcodeError = () => {
 }
 
 watch(currentPage, () => {
+  showP7QrcodePreview.value = false
+  p2PosterSaveMessage.value = ''
+  p2PosterPreviewSrc.value = ''
   requestAnimationFrame(() => {
     const scroller = document.scrollingElement || document.documentElement
     if (scroller) {
@@ -454,6 +638,11 @@ watch(currentPage, () => {
     document.body.scrollTop = 0
     document.body.scrollLeft = 0
   })
+})
+
+watch(p2Panel, () => {
+  p2PosterSaveMessage.value = ''
+  p2PosterPreviewSrc.value = ''
 })
 
 watch(p4Detail, () => {
@@ -466,28 +655,43 @@ watch(p6Center, () => {
 
 watch(p7Rules, () => {
   p7QrcodeFailed.value = false
+  showP7QrcodePreview.value = false
 })
 
 watch(p8Prize, () => {
   p8QrcodeFailed.value = false
 })
 
-onMounted(() => {
-  if (showLocalApiDebugPanel && typeof window !== 'undefined') {
-    window.addEventListener('gaokao-h5-api-log', handleDebugApiLog)
-  }
+onMounted(async () => {
+  runtimeMonitor = installRuntimeMonitor({
+    getPageCode: () => currentPage.value,
+    report: (eventName, payload) => trackEvent(eventName, payload),
+  })
+  await nextTick()
+  runtimeMonitor?.checkPageNodes()
+})
+
+watch(currentPage, async () => {
+  await nextTick()
+  runtimeMonitor?.checkPageNodes()
 })
 
 onBeforeUnmount(() => {
-  if (showLocalApiDebugPanel && typeof window !== 'undefined') {
-    window.removeEventListener('gaokao-h5-api-log', handleDebugApiLog)
-  }
+  runtimeMonitor?.dispose()
+  runtimeMonitor = undefined
 })
 </script>
 
 <template>
   <main v-if="currentPage === 'home'" class="home-page" aria-label="P1 活动首页">
     <section class="home-stage" :style="stageStyle">
+      <img
+        class="brand-logo home-brand-logo"
+        data-testid="brand-logo-home"
+        :src="primeCutsLogoSrc"
+        alt=""
+      />
+
       <button class="rule-entry" type="button" aria-label="活动规则" @click="goRules">
         <img :src="p6Asset('btn_activity_rules.png')" alt="" />
         <span class="sr-only">活动规则</span>
@@ -547,11 +751,28 @@ onBeforeUnmount(() => {
     </div>
   </main>
 
-  <main v-else-if="currentPage === 'p2'" class="p2-page" aria-label="P2 今日考运签结果页">
+  <main
+    v-else-if="currentPage === 'p2' || currentPage === 'p4'"
+    class="p2-page"
+    :class="{ 'is-legacy-p4-route': currentPage === 'p4' }"
+    aria-label="P2 今日考运签结果页"
+  >
     <section class="p2-stage" :style="p2StageStyle">
       <h1 class="sr-only">六月考运签</h1>
+      <img
+        class="brand-logo p2-brand-logo"
+        data-testid="brand-logo-result"
+        :src="primeCutsLogoSrc"
+        alt=""
+      />
 
-      <button class="p2-back-button" data-testid="p2-back" type="button" aria-label="返回" @click="goP2Back">
+      <button
+        class="p2-back-button"
+        data-testid="p2-back"
+        type="button"
+        aria-label="返回"
+        @click="currentPage === 'p4' ? goP4Back() : goP2Back()"
+      >
         <span class="sr-only">返回</span>
       </button>
 
@@ -566,131 +787,107 @@ onBeforeUnmount(() => {
       </div>
 
       <template v-else>
-        <p class="p2-sign-tag">{{ p2SignTag }}</p>
+        <article class="p2-combined-card" data-testid="p2-combined-card">
+          <img class="p2-title-sign" :src="p4Asset('text_beef_super_luck_sign.png')" alt="" />
+          <p class="sr-only">{{ p2SignTag }}</p>
+          <section class="p2-fortune-copy" aria-label="今日签文">
+            <h2>{{ p2FortuneHeadline }}</h2>
+            <p>{{ p2FortuneHint }}</p>
+          </section>
 
-        <section class="p2-side-text p2-good-for" aria-label="今日宜">
-          <span class="sr-only">宜：</span>
-          <p
-            :aria-label="p2Result.goodFor"
-            :title="p2Result.goodFor"
-            :class="getP2SideCopyClass(p2Result.goodFor)"
-          >
-            <span v-for="(char, index) in p2GoodForChars" :key="`good-${index}`">{{ char }}</span>
-          </p>
-        </section>
+          <div class="p2-result-body">
+            <section class="p2-side-text p2-good-for" data-testid="p2-left-luck" aria-label="左侧吉签">
+              <img class="p2-side-tag-image" :src="p4Asset('element_luck_tag_vertical_full.png')" alt="" />
+              <div class="p2-side-copy">
+                <strong>吉</strong>
+                <p :class="getP2SideCopyClass(p2Result.goodFor)">
+                  <span v-for="(char, index) in p2GoodForChars" :key="`good-${index}-${char}`">{{ char }}</span>
+                </p>
+              </div>
+            </section>
 
-        <section class="p2-main-text" aria-label="主签文">
-          <p v-for="column in p2MainColumns" :key="column.id" :aria-label="column.text">
-            <span v-for="(char, index) in column.chars" :key="`${column.id}-${index}`">{{ char }}</span>
-          </p>
-        </section>
+            <section class="p2-product-hero" aria-label="福利商品">
+              <img
+                data-testid="p2-product-image"
+                :src="p4ProductImageSrc"
+                alt=""
+                @error="handleP4ProductImageError"
+              />
+              <p class="sr-only">{{ p4Detail.product.productName }}</p>
+            </section>
 
-        <section class="p2-side-text p2-avoid" aria-label="今日忌">
-          <span class="sr-only">忌：</span>
-          <p
-            :aria-label="p2Result.avoid"
-            :title="p2Result.avoid"
-            :class="getP2SideCopyClass(p2Result.avoid)"
-          >
-            <span v-for="(char, index) in p2AvoidChars" :key="`avoid-${index}`">{{ char }}</span>
-          </p>
-        </section>
+            <section class="p2-side-text p2-avoid" data-testid="p2-right-luck" aria-label="右侧吉签">
+              <img class="p2-side-tag-image" :src="p4Asset('element_luck_tag_vertical_full.png')" alt="" />
+              <div class="p2-side-copy">
+                <strong>吉</strong>
+                <p :class="getP2SideCopyClass(p2Result.avoid)">
+                  <span v-for="(char, index) in p2AvoidChars" :key="`avoid-${index}-${char}`">{{ char }}</span>
+                </p>
+              </div>
+            </section>
+          </div>
 
-        <h2 class="sr-only">今日解签</h2>
-        <p class="sr-only">点击下方按钮，查看今日解签内容</p>
+          <section class="p2-ai-panel" data-testid="p2-ai-panel" aria-label="AI 解签">
+            <div class="p2-ai-scroll" :class="{ 'is-open': p4ExplainVisible }" data-testid="p2-ai-scroll">
+              <button
+                class="p2-scroll-head"
+                data-testid="ask-xiaopu"
+                type="button"
+                :aria-expanded="p4ExplainVisible ? 'true' : 'false'"
+                @click="openP2Explain"
+              >
+                <img :src="p4Asset('text_ai_result_scroll_header_double_tassel.png')" alt="" />
+                <span class="sr-only">AI 解签，轻触启签</span>
+              </button>
 
-        <button
-          class="p2-ask-button"
-          data-testid="ask-xiaopu"
-          type="button"
-          aria-label="问小璞"
-          @click="openP2Explain"
-        >
-          <img :src="p2Asset('btn_ask_xiaoying.png')" alt="" />
-          <span class="sr-only">问小璞</span>
-        </button>
+              <div class="p2-scroll-body">
+                <div v-if="p4ExplainVisible && p4Status === 'loading'" class="p2-ai-loading" role="status">
+                  <div class="p4-loading-mark" aria-hidden="true">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
+                  <strong class="p4-loading-title">AI 解签中</strong>
+                  <ol class="p4-thinking-list" aria-label="AI 解签生成进度">
+                    <li v-for="line in p4VisibleThinkingLines" :key="line" class="p4-thinking-line">
+                      <span class="p4-thinking-dot" aria-hidden="true"></span>
+                      <span class="p4-thinking-text">{{ line }}</span>
+                    </li>
+                  </ol>
+                </div>
 
-        <button
-          class="p2-share-poster"
-          data-testid="share-poster"
-          type="button"
-          aria-label="点击分享海报"
-          @click="openP2Poster"
-        >
-          <img :src="p2Asset('btn_share_poster.png')" alt="" />
-          <span class="sr-only">点击分享海报</span>
-        </button>
-      </template>
-    </section>
+                <div v-else-if="p4ExplainVisible && p4Status === 'error'" class="p2-ai-error" role="alert">
+                  <strong>解签结果加载失败，请稍后再试</strong>
+                  <button type="button" @click="retryP4Detail">重新加载</button>
+                </div>
 
-    <div v-if="p2Panel" class="modal-mask" role="presentation">
-      <section class="share-dialog p2-dialog" role="dialog" aria-modal="true" aria-labelledby="p2-panel-title">
-        <h2 id="p2-panel-title">{{ p2PanelTitle }}</h2>
-        <p>{{ p2PanelText }}</p>
-        <div class="dialog-actions">
-          <button data-testid="close-p2-panel" type="button" @click="closeP2Panel">知道了</button>
-        </div>
-      </section>
-    </div>
-  </main>
-
-  <main v-else-if="currentPage === 'p4'" class="p4-page" aria-label="P4 AI 解签结果页">
-    <section class="p4-stage" :style="p4StageStyle">
-      <h1 class="sr-only">{{ p4Detail.title }}</h1>
-
-      <button class="p4-back-button" data-testid="p4-back" type="button" aria-label="返回" @click="goP4Back">
-        <span class="sr-only">返回</span>
-      </button>
-
-      <div v-if="p4Status === 'loading'" class="p4-state p4-thinking-state" role="status">
-        <div class="p4-loading-mark" aria-hidden="true">
-          <span></span>
-          <span></span>
-          <span></span>
-        </div>
-        <strong class="p4-loading-title">AI 解签中</strong>
-        <ol class="p4-thinking-list" aria-label="AI 解签生成进度">
-          <li v-for="line in p4VisibleThinkingLines" :key="line" class="p4-thinking-line">
-            <span class="p4-thinking-dot" aria-hidden="true"></span>
-            <span class="p4-thinking-text">{{ line }}</span>
-          </li>
-        </ol>
-        <div class="sr-only">
-          <strong>解签结果加载中</strong>
-          <p>正在为你生成 AI 解签结果。</p>
-        </div>
-      </div>
-
-      <div v-else-if="p4Status === 'error'" class="p4-state" role="alert">
-        <strong>解签结果加载失败，请稍后再试</strong>
-        <button type="button" @click="retryP4Detail">重新加载</button>
-      </div>
-
-      <template v-else>
-        <section class="p4-poem" aria-label="AI 解签文案">
-          <p v-for="line in p4Detail.explainLines" :key="line">{{ line }}</p>
-        </section>
-
-        <p class="sr-only">{{ p4Detail.themeText }}</p>
-
-        <section class="p4-product" aria-label="牛肉福利推荐">
-          <img :src="p4ProductImageSrc" alt="" @error="handleP4ProductImageError" />
-          <p>{{ p4Detail.product.productName }}</p>
-        </section>
+                <div v-else-if="p4ExplainVisible" class="p2-ai-result" data-testid="p2-ai-result">
+                  <p v-for="line in p4Detail.explainLines" :key="line">{{ line }}</p>
+                </div>
+              </div>
+            </div>
+          </section>
+        </article>
 
         <button
           v-if="shouldShowP4ClaimButton"
-          class="p4-claim-button"
-          data-testid="claim-benefit"
+          class="p2-claim-button"
+          data-testid="p2-claim-benefit"
           type="button"
-          :disabled="p4ClaimButtonDisabled"
-          @click="claimP4Benefit"
+          :disabled="p2BenefitButtonDisabled"
+          @click="openP2Benefit"
         >
-          <img :src="p4Asset('btn_claim_benefit.png')" alt="" />
-          <span v-if="p4ClaimStatus !== 'unclaimed'" class="p4-claim-visible-label" aria-hidden="true">
-            {{ p4ClaimButtonText }}
-          </span>
+          <img :src="p4Asset('text_claim_exclusive_reward_sign.png')" alt="" />
           <span class="sr-only">{{ p4ClaimButtonText }}</span>
+        </button>
+
+        <button
+          class="p2-poster-button"
+          data-testid="share-poster"
+          type="button"
+          @click="openP2Poster"
+        >
+          保存海报分享
         </button>
 
         <p v-if="p4ClaimTipText" class="p4-claim-tip" role="status">{{ p4ClaimTipText }}</p>
@@ -705,76 +902,82 @@ onBeforeUnmount(() => {
           我的奖励
         </button>
       </template>
-
-      <div v-if="showP5ClaimSuccess" class="p5-popup-mask" role="presentation">
-        <section
-          class="p5-popup-panel"
-          data-testid="p5-mobile-claim-popup"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="p5-popup-title"
-        >
-          <h2 id="p5-popup-title" class="p5-popup-title">
-            {{ isP5Claimed ? p5Result.pageTitle : '领取优惠券' }}
-          </h2>
-
-          <button
-            class="p5-close-button"
-            data-testid="p5-close"
-            type="button"
-            aria-label="关闭"
-            @click="closeP5ClaimSuccess"
-          >
-            <span class="sr-only">关闭</span>
-          </button>
-
-          <section class="p5-coupon-card" :aria-label="p5Result.reward.couponName">
-            <img :key="p5CouponImageSrc" :src="p5CouponImageSrc" alt="" />
-            <span class="sr-only">
-              {{ p5Result.reward.couponLabel }} {{ p5Result.reward.thresholdText }}
-              {{ p5Result.reward.amountText }}{{ p5Result.reward.unitText }}
-            </span>
-          </section>
-
-          <form class="p5-mobile-form" @submit.prevent="handleP5PrimaryAction">
-            <span class="p5-mobile-placeholder-cover" aria-hidden="true"></span>
-            <label class="p5-mobile-label" for="p5-mobile-input">手机号</label>
-            <input
-              id="p5-mobile-input"
-              v-model.trim="p5Mobile"
-              class="p5-mobile-input"
-              data-testid="p5-mobile-input"
-              type="tel"
-              inputmode="numeric"
-              autocomplete="tel"
-              maxlength="11"
-              placeholder="请输入手机号"
-              :disabled="p5ClaimStatus === 'submitting' || isP5Claimed"
-              @focus="focusP5MobileInput"
-            />
-            <p v-if="p5MobileError" class="p5-mobile-error" data-testid="p5-mobile-error" role="alert">
-              {{ p5MobileError }}
-            </p>
-
-            <button
-              class="p5-use-button p5-primary-button"
-              data-testid="p5-submit-claim"
-              type="submit"
-              :disabled="p5PrimaryButtonDisabled"
-            >
-              <span>{{ p5PrimaryButtonText }}</span>
-            </button>
-
-            <p v-if="p5UseMessage" class="p5-use-tip" role="status">{{ p5UseMessage }}</p>
-          </form>
-        </section>
-      </div>
     </section>
+
+    <div v-if="p2Panel" class="modal-mask" role="presentation">
+      <section
+        v-if="p2Panel === 'poster'"
+        class="p2-poster-dialog"
+        data-testid="p2-poster-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="p2-poster-title"
+      >
+        <button
+          class="p2-poster-dismiss"
+          data-testid="close-p2-panel"
+          type="button"
+          aria-label="关闭"
+          @click="closeP2Panel"
+        >
+          <span class="sr-only">关闭</span>
+        </button>
+        <article v-if="!p2PosterPreviewSrc" class="p2-poster-card" data-testid="p2-poster-card">
+          <img class="p2-poster-title-sign" :src="p4Asset('text_beef_super_luck_sign.png')" alt="" />
+          <section class="p2-poster-copy" aria-label="分享签文">
+            <h2 id="p2-poster-title">{{ p2FortuneHeadline }}</h2>
+            <p>{{ p2FortuneHint }}</p>
+          </section>
+          <div class="p2-poster-lines" aria-label="吉签内容">
+            <p>{{ p2Result.goodFor }}</p>
+            <p>{{ p2Result.avoid }}</p>
+          </div>
+          <div class="p2-poster-qrcode">
+            <img
+              v-if="p7QrcodeSrc"
+              data-testid="p2-poster-qrcode"
+              :src="p7QrcodeSrc"
+              alt="活动二维码"
+              @error="handleP7QrcodeError"
+            />
+            <span v-else>二维码暂未配置</span>
+          </div>
+          <p class="p2-poster-tip">长按保存，扫码参与活动</p>
+        </article>
+        <img
+          v-else
+          class="p2-poster-generated-preview"
+          data-testid="p2-poster-generated-preview"
+          :src="p2PosterPreviewSrc"
+          alt="生成的分享图片"
+        />
+        <button class="p2-poster-save" data-testid="save-p2-poster" type="button" @click="saveP2Poster">
+          保存
+        </button>
+        <p v-if="p2PosterSaveMessage" class="p2-poster-save-message" data-testid="p2-poster-save-message" role="status">
+          {{ p2PosterSaveMessage }}
+        </p>
+      </section>
+
+      <section v-else class="share-dialog p2-dialog" role="dialog" aria-modal="true" aria-labelledby="p2-panel-title">
+        <h2 id="p2-panel-title">{{ p2PanelTitle }}</h2>
+        <p>{{ p2PanelText }}</p>
+        <div class="dialog-actions">
+          <button data-testid="close-p2-panel" type="button" @click="closeP2Panel">知道了</button>
+        </div>
+      </section>
+    </div>
   </main>
 
   <main v-else-if="currentPage === 'p6'" class="p6-page" aria-label="P6 我的奖励页">
     <section class="p6-stage" :style="p6StageStyle">
       <h1 class="sr-only">{{ p6Center.page_title }}</h1>
+      <img
+        class="brand-logo p6-brand-logo"
+        data-testid="brand-logo-rewards"
+        :src="primeCutsLogoSrc"
+        alt=""
+      />
 
       <button class="p6-back-button" data-testid="p6-back" type="button" aria-label="返回" @click="goP6Back">
         <span class="sr-only">返回</span>
@@ -901,64 +1104,62 @@ onBeforeUnmount(() => {
 
   <main v-else-if="currentPage === 'p8'" class="p8-page" aria-label="P8 大奖资格确认页">
     <section class="p8-stage" :style="p8StageStyle">
-      <button class="p8-back-button" data-testid="p8-back" type="button" aria-label="返回" @click="goP8Back">
-        <span class="sr-only">返回</span>
+      <button class="p8-back-button" data-testid="p8-back" type="button" aria-label="杩斿洖" @click="goP8Back">
+        <span class="sr-only">杩斿洖</span>
       </button>
 
-      <template v-if="p8Qualification.qualified">
-        <header class="p8-hero-copy" aria-label="大奖资格标题">
-          <h1>
-            <span v-for="line in p8HeroLines" :key="line">{{ line }}</span>
-          </h1>
-          <p>{{ p8Prize.hero.subtitle }}</p>
-        </header>
+      <header class="p8-hero-copy" aria-label="澶у璧勬牸鏍囬">
+        <h1>
+          <span v-for="line in p8HeroLines" :key="line">{{ line }}</span>
+        </h1>
+        <p>{{ p8Prize.hero.subtitle }}</p>
+      </header>
 
-        <section class="p8-qualification-copy" aria-label="大奖资格信息">
-          <h2>{{ p8Qualification.qualify_desc }}</h2>
-          <p>{{ p8Qualification.prize_title }}</p>
-          <ul>
-            <li v-for="benefit in p8Prize.benefits" :key="benefit.id">
-              {{ benefit.title }} {{ benefit.desc }}
-            </li>
-          </ul>
-        </section>
+      <section class="p8-qualification-copy" aria-label="澶у璧勬牸淇℃伅">
+        <h2>{{ p8Qualification.qualify_desc }}</h2>
+        <p>{{ p8Qualification.prize_title }}</p>
+        <ul>
+          <li v-for="benefit in p8Prize.benefits" :key="benefit.id">
+            {{ benefit.title }} {{ benefit.desc }}
+          </li>
+        </ul>
+      </section>
 
-        <p class="p8-lottery-no" data-testid="p8-lottery-no">{{ p8LotteryNoText }}</p>
+      <p v-if="p8Qualification.qualified" class="p8-lottery-no" data-testid="p8-lottery-no">{{ p8LotteryNoText }}</p>
 
-        <section class="p8-status-copy" aria-label="开奖状态">
-          <p class="p8-status-value">{{ p8LotteryStatus.status_text }}</p>
-          <p class="p8-draw-time">{{ p8LotteryStatus.draw_time_desc }}</p>
-          <p class="p8-status-lottery-no">{{ p8LotteryNoText }}</p>
-          <p class="p8-status-notice">{{ p8LotteryStatus.notice }}</p>
-          <strong class="p8-publicity-title">{{ p8LotteryStatus.publicity_title }}</strong>
-          <p class="p8-publicity-desc">{{ p8LotteryStatus.publicity_desc }}</p>
-        </section>
+      <section class="p8-status-copy" aria-label="开奖状态">
+        <p class="p8-status-value">{{ p8LotteryStatus.status_text }}</p>
+        <p class="p8-draw-time">{{ p8LotteryStatus.draw_time_desc }}</p>
+        <p class="p8-status-lottery-no">{{ p8LotteryNoText }}</p>
+        <p class="p8-status-notice">{{ p8LotteryStatus.notice }}</p>
+        <strong class="p8-publicity-title">{{ p8LotteryStatus.publicity_title }}</strong>
+        <p class="p8-publicity-desc">{{ p8LotteryStatus.publicity_desc }}</p>
+      </section>
 
-        <section class="p8-wechat-copy" aria-label="企微二维码">
-          <h2>{{ p8WechatGroup.title }}</h2>
-          <ul>
-            <li v-for="benefit in p8WechatGroup.benefits" :key="benefit">{{ benefit }}</li>
-          </ul>
-        </section>
+      <section class="p8-wechat-copy" aria-label="企微二维码">
+        <h2>{{ p8WechatGroup.title }}</h2>
+        <ul>
+          <li v-for="benefit in p8WechatGroup.benefits" :key="benefit">{{ benefit }}</li>
+        </ul>
+      </section>
 
-        <div class="p8-qrcode-frame" data-testid="p8-qrcode" @click="trackP8QrcodeClick">
-          <img v-if="p8QrcodeSrc" :src="p8QrcodeSrc" alt="企微二维码" @error="handleP8QrcodeError" />
-          <span v-else>企微二维码暂未配置</span>
-        </div>
-      </template>
+      <div class="p8-qrcode-frame" data-testid="p8-qrcode" @click="trackP8QrcodeClick">
+        <img v-if="p8QrcodeSrc" :src="p8QrcodeSrc" alt="企微二维码" @error="handleP8QrcodeError" />
+        <span v-else>浼佸井浜岀淮鐮佹殏鏈厤缃?</span>
+      </div>
 
-      <section v-else class="p8-not-qualified" data-testid="p8-not-qualified" role="alert">
-        <strong>大奖资格暂未解锁</strong>
+      <section v-if="!p8Qualification.qualified" class="p8-not-qualified" data-testid="p8-not-qualified" role="alert">
+        <strong>澶у璧勬牸鏆傛湭瑙ｉ攣</strong>
         <p>{{ p8Qualification.qualify_desc }}</p>
-        <button type="button" @click="goP8Back">返回我的奖励</button>
+        <button type="button" @click="goP8Back">杩斿洖鎴戠殑濂栧姳</button>
       </section>
     </section>
   </main>
 
   <main v-else-if="currentPage === 'rules'" class="p7-page" aria-label="P7 活动规则页" @scroll.passive="trackP7ScrollToBottom">
     <section class="p7-stage" :style="p7StageStyle">
-      <button class="p7-back-button" data-testid="p7-back" type="button" aria-label="返回" @click="goP7Back">
-        <span class="sr-only">返回</span>
+      <button class="p7-back-button" data-testid="p7-back" type="button" aria-label="杩斿洖" @click="goP7Back">
+        <span class="sr-only">杩斿洖</span>
       </button>
 
       <header class="p7-heading">
@@ -966,8 +1167,8 @@ onBeforeUnmount(() => {
         <p>{{ p7Rules.subtitle }}</p>
       </header>
 
-      <section class="p7-rules-card" aria-label="活动规则说明">
-        <h2 class="sr-only">活动规则说明</h2>
+      <section class="p7-rules-card" aria-label="娲诲姩瑙勫垯璇存槑">
+        <h2 class="sr-only">娲诲姩瑙勫垯璇存槑</h2>
         <ol class="p7-rule-list">
           <li
             v-for="rule in p7Rules.rules"
@@ -981,33 +1182,130 @@ onBeforeUnmount(() => {
         </ol>
       </section>
 
-      <section class="p7-wechat-card" aria-label="扫码添加企微">
+      <section class="p7-wechat-card" aria-label="鎵爜娣诲姞浼佸井">
         <div class="p7-qrcode-frame" @click="trackP7QrcodeClick">
           <img v-if="p7QrcodeSrc" :src="p7QrcodeSrc" alt="企微二维码" @error="handleP7QrcodeError" />
-          <span v-else>二维码暂未配置</span>
+          <span v-else>浜岀淮鐮佹殏鏈厤缃?</span>
         </div>
         <div class="p7-wechat-copy">
           <strong>{{ p7Rules.wechat_group.title }}</strong>
           <p>{{ p7Rules.wechat_group.desc }}</p>
         </div>
       </section>
+
+      <button
+        v-if="p7QrcodeSrc"
+        class="p7-qrcode-hotspot"
+        data-testid="p7-qrcode-hotspot"
+        type="button"
+        aria-label="Open QR code preview"
+        @click="openP7QrcodePreview"
+      >
+        <span class="sr-only">Open QR code preview</span>
+      </button>
     </section>
   </main>
 
   <section v-else class="placeholder-page">
-    <h1>P6 我的奖励页占位</h1>
-    <p>这里后续接入我的考运进度和奖励信息。</p>
-    <button type="button" @click="goHome">返回首页</button>
+    <h1>P6 鎴戠殑濂栧姳椤靛崰浣?</h1>
+    <p>杩欓噷鍚庣画鎺ュ叆鎴戠殑鑰冭繍杩涘害鍜屽鍔变俊鎭€?</p>
+    <button type="button" @click="goHome">杩斿洖棣栭〉</button>
   </section>
+
+  <div v-if="showP5ClaimSuccess" class="p5-popup-mask" role="presentation">
+    <section
+      class="p5-popup-panel"
+      data-testid="p5-mobile-claim-popup"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="p5-popup-title"
+    >
+      <h2 id="p5-popup-title" class="p5-popup-title">
+        {{ isP5Claimed ? p5Result.pageTitle : '领取优惠券' }}
+      </h2>
+
+      <button
+        class="p5-close-button"
+        data-testid="p5-close"
+        type="button"
+        aria-label="鍏抽棴"
+        @click="closeP5ClaimSuccess"
+      >
+        <span class="sr-only">鍏抽棴</span>
+      </button>
+
+      <section class="p5-coupon-card" :aria-label="p5Result.reward.couponName">
+        <img :key="p5CouponImageSrc" :src="p5CouponImageSrc" alt="" />
+        <span class="sr-only">
+          {{ p5Result.reward.couponLabel }} {{ p5Result.reward.thresholdText }}
+          {{ p5Result.reward.amountText }}{{ p5Result.reward.unitText }}
+        </span>
+      </section>
+
+      <form class="p5-mobile-form" @submit.prevent="handleP5PrimaryAction">
+        <span class="p5-mobile-placeholder-cover" aria-hidden="true"></span>
+        <label class="p5-mobile-label" for="p5-mobile-input">手机号</label>
+        <input
+          id="p5-mobile-input"
+          v-model.trim="p5Mobile"
+          class="p5-mobile-input"
+          data-testid="p5-mobile-input"
+          type="tel"
+          inputmode="numeric"
+          autocomplete="tel"
+          maxlength="11"
+          placeholder="请输入手机号"
+          :disabled="p5ClaimStatus === 'submitting' || isP5Claimed"
+          @focus="focusP5MobileInput"
+        />
+        <p v-if="p5MobileError" class="p5-mobile-error" data-testid="p5-mobile-error" role="alert">
+          {{ p5MobileError }}
+        </p>
+
+        <button
+          class="p5-use-button p5-primary-button"
+          data-testid="p5-submit-claim"
+          type="submit"
+          :disabled="p5PrimaryButtonDisabled"
+        >
+          <span>{{ p5PrimaryButtonText }}</span>
+        </button>
+
+        <p v-if="p5UseMessage" class="p5-use-tip" role="status">{{ p5UseMessage }}</p>
+      </form>
+    </section>
+  </div>
+
+  <div
+    v-if="showP7QrcodePreview"
+    class="p7-qrcode-preview-mask"
+    data-testid="p7-qrcode-preview"
+    role="presentation"
+    @click.self="closeP7QrcodePreview"
+  >
+    <section class="p7-qrcode-preview-panel" role="dialog" aria-modal="true" aria-label="QR code preview">
+      <button
+        class="p7-qrcode-preview-close"
+        data-testid="p7-qrcode-preview-close"
+        type="button"
+        aria-label="Close QR code preview"
+        @click="closeP7QrcodePreview"
+      >
+        <span class="sr-only">Close QR code preview</span>
+      </button>
+      <img class="p7-qrcode-preview-image" :src="p7QrcodeSrc" alt="QR code preview" @error="handleP7QrcodeError" />
+    </section>
+  </div>
 
   <div
     v-if="showDrawAnimation"
     class="draw-animation-overlay"
     data-testid="draw-animation-overlay"
-    aria-label="抽签动画"
+    aria-label="鎶界鍔ㄧ敾"
   >
     <section class="draw-animation-shell" role="status" aria-live="polite">
       <video
+        v-if="canUseTransparentDrawVideo"
         class="draw-animation-video"
         data-testid="draw-animation-video"
         autoplay
@@ -1023,45 +1321,19 @@ onBeforeUnmount(() => {
           :src="drawAnimationWebmSrc"
           type="video/webm"
         >
-        <source
-          data-testid="draw-animation-mp4-source"
-          :src="drawAnimationVideoSrc"
-          type="video/mp4"
-        >
       </video>
-      <p v-if="drawAnimationStatus === 'waiting'" class="draw-animation-status">抽签结果生成中</p>
+      <img
+        v-else
+        class="draw-animation-video draw-animation-fallback"
+        data-testid="draw-animation-fallback"
+        :src="homeAsset('element_lottery_box.png')"
+        alt=""
+        @animationend="completeDrawAnimation"
+        @error="failDrawAnimation"
+      >
+      <p v-if="drawAnimationStatus === 'waiting'" class="draw-animation-status">鎶界缁撴灉鐢熸垚涓?</p>
     </section>
   </div>
 
-  <aside
-    v-if="showLocalApiDebugPanel"
-    class="local-api-debug-panel"
-    :class="{ 'is-expanded': debugPanelExpanded }"
-    aria-label="本地接口请求信息"
-  >
-    <button
-      class="local-api-debug-toggle"
-      data-testid="local-api-debug-toggle"
-      type="button"
-      :aria-expanded="String(debugPanelExpanded)"
-      @click="debugPanelExpanded = !debugPanelExpanded"
-    >
-      <strong>接口</strong>
-      <small>{{ debugPanelSummary }}</small>
-    </button>
-    <div v-if="debugPanelExpanded" class="local-api-debug-body" data-testid="local-api-debug-body">
-      <header>
-        <strong>接口请求</strong>
-        <a href="http://127.0.0.1:8000/docs" target="_blank" rel="noreferrer">Docs</a>
-      </header>
-      <p v-if="debugApiEntries.length === 0">等待接口请求...</p>
-      <ul v-else>
-        <li v-for="entry in debugApiEntries" :key="`${entry.logged_at}-${entry.method}-${entry.displayUrl}`">
-          <span :class="{ 'is-error': !entry.ok }">{{ entry.method }} {{ entry.status }}</span>
-          <code>{{ entry.displayUrl }}</code>
-          <small>{{ entry.duration_ms }}ms · {{ entry.logged_at }}</small>
-        </li>
-      </ul>
-    </div>
-  </aside>
 </template>
+

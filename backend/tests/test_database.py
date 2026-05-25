@@ -61,7 +61,7 @@ class ActivityRepositoryTests(unittest.TestCase):
             counts,
             {
                 "asset_count": 8,
-                "product_count": 1,
+                "product_count": 4,
                 "reward_count": 7,
                 "draw_result_count": 1,
             },

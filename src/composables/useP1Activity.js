@@ -32,12 +32,35 @@ const P4_THINKING_LINES = [
   '匹配牛气补给能量',
   '整理专属好运签文',
 ]
+const RESULT_PRODUCT_ROTATION_STORAGE = 'gaokao_h5_result_product_index'
+const RESULT_PRODUCTS = [
+  {
+    productId: 'flat-iron-beef-card',
+    productImage: 'product_flat_iron_steak.png',
+    action: { type: 'mini_program_product_detail', target: '/pages/product/detail?id=sku_001' },
+  },
+  {
+    productId: 'ribeye-beef-card',
+    productImage: 'product_ribeye_steak.png',
+    action: { type: 'mini_program_product_detail', target: '/pages/product/detail?id=sku_002' },
+  },
+  {
+    productId: 'sirloin-beef-card',
+    productImage: 'product_sirloin_steak.png',
+    action: { type: 'mini_program_product_detail', target: '/pages/product/detail?id=sku_003' },
+  },
+  {
+    productId: 'tenderloin-beef-card',
+    productImage: 'product_tenderloin_steak.png',
+    action: { type: 'mini_program_product_detail', target: '/pages/product/detail?id=sku_004' },
+  },
+]
 const DEFAULT_P2_RESULT = {
   signType: '金榜题名签',
   signLevel: '上上签',
   mainTextColumns: ['金榜题名', '愿你落笔生花'],
-  goodFor: '稳住心态、认真审题、从容落笔',
-  avoid: '慌乱失分、粗心失分、临场焦虑',
+  goodFor: '肉质细嫩鲜香四溢',
+  avoid: '和牛好礼好运加持',
   explainText: '今日宜沉心静气，按自己的节奏稳扎稳打。先把确定会做的题拿稳，再从容攻克难题。',
 }
 const DEFAULT_P4_DETAIL = {
@@ -58,7 +81,7 @@ const DEFAULT_P4_DETAIL = {
   product: {
     productId: 'default-beef-card',
     productName: '和牛 · 锦绣前程板腱',
-    productImage: 'card_beef_photo.png',
+    productImage: 'product_flat_iron_steak.png',
   },
   benefit: {
     benefitId: 'default-benefit',
@@ -88,7 +111,7 @@ const DEFAULT_P5_RESULT = {
 }
 const DEFAULT_P6_CENTER = {
   activity_id: 'gaokao_lucky_sign_2026',
-  page_title: '閹存垹娈戞總鏍уС',
+  page_title: '我的奖励',
   progress: {
     shared_count: 0,
     share_target: 5,
@@ -97,17 +120,17 @@ const DEFAULT_P6_CENTER = {
     completed_days: [],
     gift_qualified: false,
     gift_status: 'not_qualified',
-    progress_desc: '閸掑棔闊?娑擃亜銈介崣瀣剁礉閹存牜鐤拋锛勫仯娴?婢垛晪绱濈挧銏犲絿985閸滃瞼澧扮粈鑲╂磪閹惰棄顨涚挧鍕壐閿?',
+    progress_desc: '分享5个好友，或累计点亮7天，赢取985和牛礼盒抽奖资格！',
   },
   claimed_rewards: [
     {
       reward_id: 'coupon_10',
       reward_type: 'coupon',
       title: '10',
-      unit_text: '閸?',
-      desc: '閺冪娀妫Σ娑樺煖',
+      unit_text: '元',
+      desc: '无门槛券',
       status: 'unused',
-      button_text: '閸樿濞囬悽?',
+      button_text: '去领取',
       action: {
         type: 'mini_program_coupon_package',
         target: '/pages/coupon-package/index',
@@ -117,10 +140,10 @@ const DEFAULT_P6_CENTER = {
       reward_id: 'coupon_20',
       reward_type: 'coupon',
       title: '20',
-      unit_text: '閸?',
-      desc: '閺冪娀妫Σ娑樺煖',
+      unit_text: '元',
+      desc: '无门槛券',
       status: 'unused',
-      button_text: '閸樿濞囬悽?',
+      button_text: '去领取',
       action: {
         type: 'mini_program_coupon_package',
         target: '/pages/coupon-package/index',
@@ -130,10 +153,10 @@ const DEFAULT_P6_CENTER = {
       reward_id: 'coupon_30',
       reward_type: 'coupon',
       title: '30',
-      unit_text: '閸?',
-      desc: '閺冪娀妫Σ娑樺煖',
+      unit_text: '元',
+      desc: '无门槛券',
       status: 'unused',
-      button_text: '閸樿濞囬悽?',
+      button_text: '去领取',
       action: {
         type: 'mini_program_coupon_package',
         target: '/pages/coupon-package/index',
@@ -142,10 +165,11 @@ const DEFAULT_P6_CENTER = {
     {
       reward_id: 'discount_9',
       reward_type: 'discount_coupon',
-      title: '9閹?',
-      desc: '閸忋劌婧€閸欘垳鏁?',
+      title: '9折',
+      unit_text: '',
+      desc: '全场可用',
       status: 'unused',
-      button_text: '閸樿濞囬悽?',
+      button_text: '去领取',
       action: {
         type: 'mini_program_coupon_package',
         target: '/pages/coupon-package/index',
@@ -154,10 +178,11 @@ const DEFAULT_P6_CENTER = {
     {
       reward_id: 'discount_75',
       reward_type: 'discount_coupon',
-      title: '7.5閹?',
-      desc: '鐟楀灝鍠庨悧娑欏笓娑撴挸鐫?',
+      title: '7.5折',
+      unit_text: '',
+      desc: '西冷牛排专属',
       status: 'unused',
-      button_text: '閸樿濞囬悽?',
+      button_text: '去领取',
       action: {
         type: 'mini_program_coupon_package',
         target: '/pages/coupon-package/index',
@@ -167,35 +192,35 @@ const DEFAULT_P6_CENTER = {
   gift_reward: {
     reward_id: 'gift_985',
     reward_type: 'gift_lottery_qualification',
-    title: '985閸滃瞼澧扮粈鑲╂磪',
-    desc: '閹惰棄顨涚挧鍕壐',
+    title: '985和牛礼盒',
+    desc: '抽奖资格',
     status: 'not_qualified',
-    button_text: '閺堫亣鎻弽?',
+    button_text: '未达标',
     action: {
       type: 'gift_qualification_detail',
-      target: '',
+      target: '/activity/grand-prize',
     },
   },
   product_recommend: {
     product_id: 'sku_001',
-    title: '妤傛鈧啯鍨氶崝鐔哄閹?',
-    subtitle: '缁箖鈧鑳烘鑼躲偪閸?妞存粌顏︽径姘湲',
-    button_text: '閸樿崵婀呴惇?',
-    image_url: 'card_beef_photo.png',
+    title: '高考成功牛排',
+    subtitle: '板腱牛排肉质细嫩，适合考前牛气补给',
+    button_text: '去看看',
+    image_url: 'product_flat_iron_steak.png',
     action: {
       type: 'mini_program_product_detail',
       target: '/pages/product/detail?id=sku_001',
     },
   },
   draw_again_action: {
-    button_text: '閸愬秵濞婃稉鈧▎?',
+    button_text: '再抽一次',
     action: {
       type: 'p1_home',
       target: '/activity/home',
     },
   },
   rules_action: {
-    button_text: '濞茶濮╃憴鍕灟',
+    button_text: '活动规则',
     action: {
       type: 'activity_rules',
       target: '/activity/rules',
@@ -288,96 +313,6 @@ const DEFAULT_P8_PRIZE = {
   },
 }
 
-Object.assign(DEFAULT_P6_CENTER, {
-  page_title: '鎴戠殑濂栧姳',
-  progress: {
-    shared_count: 0,
-    share_target: 5,
-    lit_days: 0,
-    light_target: 7,
-    completed_days: [],
-    gift_qualified: false,
-    gift_status: 'not_qualified',
-    progress_desc: '鍒嗕韩5涓ソ鍙嬶紝鎴栫疮璁＄偣浜?澶╋紝璧㈠彇985鍜岀墰绀肩洅鎶藉璧勬牸锛?',
-  },
-  claimed_rewards: [
-    {
-      reward_id: 'coupon_10',
-      reward_type: 'coupon',
-      title: '10',
-      unit_text: '鍏?',
-      desc: '鏃犻棬妲涘埜',
-      status: 'unused',
-      button_text: '鍘讳娇鐢?',
-      action: { type: 'mini_program_coupon_package', target: '/pages/coupon-package/index' },
-    },
-    {
-      reward_id: 'coupon_20',
-      reward_type: 'coupon',
-      title: '20',
-      unit_text: '鍏?',
-      desc: '鏃犻棬妲涘埜',
-      status: 'unused',
-      button_text: '鍘讳娇鐢?',
-      action: { type: 'mini_program_coupon_package', target: '/pages/coupon-package/index' },
-    },
-    {
-      reward_id: 'coupon_30',
-      reward_type: 'coupon',
-      title: '30',
-      unit_text: '鍏?',
-      desc: '鏃犻棬妲涘埜',
-      status: 'unused',
-      button_text: '鍘讳娇鐢?',
-      action: { type: 'mini_program_coupon_package', target: '/pages/coupon-package/index' },
-    },
-    {
-      reward_id: 'discount_9',
-      reward_type: 'discount_coupon',
-      title: '9鎶?',
-      unit_text: '',
-      desc: '鍏ㄥ満鍙敤',
-      status: 'unused',
-      button_text: '鍘讳娇鐢?',
-      action: { type: 'mini_program_coupon_package', target: '/pages/coupon-package/index' },
-    },
-    {
-      reward_id: 'discount_75',
-      reward_type: 'discount_coupon',
-      title: '7.5鎶?',
-      unit_text: '',
-      desc: '瑗垮喎鐗涙帓涓撳睘',
-      status: 'unused',
-      button_text: '鍘讳娇鐢?',
-      action: { type: 'mini_program_coupon_package', target: '/pages/coupon-package/index' },
-    },
-  ],
-  gift_reward: {
-    reward_id: 'gift_985',
-    reward_type: 'gift_lottery_qualification',
-    title: '985鍜岀墰绀肩洅',
-    desc: '鎶藉璧勬牸',
-    status: 'not_qualified',
-    button_text: '鏈揪鏍?',
-    action: { type: 'gift_qualification_detail', target: '/activity/grand-prize' },
-  },
-  product_recommend: {
-    product_id: 'sku_001',
-    title: '楂樿€冩垚鍔熺墰鎺?',
-    subtitle: '绮鹃€夎胺楗茶タ鍐?椴滃澶氭眮',
-    button_text: '鍘荤湅鐪?',
-    image_url: 'card_beef_photo.png',
-    action: { type: 'mini_program_product_detail', target: '/pages/product/detail?id=sku_001' },
-  },
-  draw_again_action: {
-    button_text: '鍐嶆娊涓€娆?',
-    action: { type: 'p1_home', target: '/activity/home' },
-  },
-  rules_action: {
-    button_text: '娲诲姩瑙勫垯',
-    action: { type: 'activity_rules', target: '/activity/rules' },
-  },
-})
 
 Object.assign(DEFAULT_P7_RULES, {
   page_title: '娲诲姩瑙勫垯',
@@ -459,6 +394,40 @@ const normalizeP4Detail = (detail = {}) => ({
   benefit: {
     ...DEFAULT_P4_DETAIL.benefit,
     ...(detail.benefit ?? {}),
+  },
+})
+
+const getStoredResultProductIndex = () => {
+  if (typeof window === 'undefined') {
+    return -1
+  }
+
+  const stored = window.sessionStorage.getItem(RESULT_PRODUCT_ROTATION_STORAGE)
+  if (stored === null) {
+    return -1
+  }
+
+  const parsed = Number(stored)
+  return Number.isInteger(parsed) ? parsed : -1
+}
+
+const claimNextResultProduct = () => {
+  if (typeof window === 'undefined') {
+    return RESULT_PRODUCTS[0]
+  }
+
+  const nextIndex = (getStoredResultProductIndex() + 1) % RESULT_PRODUCTS.length
+  window.sessionStorage.setItem(RESULT_PRODUCT_ROTATION_STORAGE, String(nextIndex))
+  return RESULT_PRODUCTS[nextIndex]
+}
+
+const withResultProduct = (detail, product) => ({
+  ...detail,
+  product: {
+    ...detail.product,
+    productId: product.productId,
+    productImage: product.productImage,
+    action: product.action,
   },
 })
 
@@ -794,7 +763,17 @@ export function useP1Activity(options = {}) {
   const p2Result = ref(normalizeP2Result(options.initialP2Result))
   const p2Status = ref(options.initialP2Status ?? 'success')
   const p4Detail = ref(normalizeP4Detail(options.initialP4Detail))
+  const currentResultProduct = ref(null)
+  const rotateResultProductForEntry = () => {
+    currentResultProduct.value = claimNextResultProduct()
+    p4Detail.value = withResultProduct(p4Detail.value, currentResultProduct.value)
+  }
+  if ((initialPage === 'p2' || initialPage === 'p4') && !options.initialP4Detail?.product?.productImage) {
+    rotateResultProductForEntry()
+  }
+  const p4DetailLoaded = ref(Boolean(options.initialP4Detail))
   const p4Status = ref(options.initialP4Status ?? 'success')
+  const p4ExplainVisible = ref(initialPage === 'p4')
   const p4ThinkingLines = ref(P4_THINKING_LINES)
   const p4ThinkingStepCount = ref(p4Status.value === 'loading' ? 1 : P4_THINKING_LINES.length)
   const p4VisibleThinkingLines = computed(() => p4ThinkingLines.value.slice(0, p4ThinkingStepCount.value))
@@ -960,6 +939,7 @@ export function useP1Activity(options = {}) {
     isDrawTemporarilyDisabled.value = false
 
     if (status === 'ready') {
+      rotateResultProductForEntry()
       setCurrentPage('p2')
       trackEvent('draw_animation_end', { draw_id: latestDrawId.value })
       trackEvent('result_page_view', { draw_id: latestDrawId.value })
@@ -1181,6 +1161,11 @@ export function useP1Activity(options = {}) {
 
       p2Status.value = 'loading'
       p2Panel.value = ''
+      p4ExplainVisible.value = false
+      p4DetailLoaded.value = false
+      p4Status.value = 'success'
+      clearP4ClaimMessage()
+      showP5ClaimSuccess.value = false
       startDrawAnimation()
       try {
         const token = await ensureSession()
@@ -1210,6 +1195,11 @@ export function useP1Activity(options = {}) {
     if (drawChance.value > 0) {
       p2Panel.value = ''
       p2Status.value = 'success'
+      p4ExplainVisible.value = false
+      p4DetailLoaded.value = false
+      p4Status.value = 'success'
+      clearP4ClaimMessage()
+      showP5ClaimSuccess.value = false
       startDrawAnimation()
       resolveDrawRequest('ready')
       return
@@ -1228,14 +1218,76 @@ export function useP1Activity(options = {}) {
     showShareGuide.value = false
   }
 
-  const openP2Explain = async () => {
-    trackEvent('ask_xiaopu_click')
-    setCurrentPage('p4')
+  const applyP4Detail = (detail = {}) => {
+    if (detail.draw_id || detail.drawId) {
+      latestDrawId.value = detail.draw_id ?? detail.drawId
+    }
+    const normalizedDetail = normalizeP4Detail(detail)
+    p4Detail.value = currentResultProduct.value
+      ? withResultProduct(normalizedDetail, currentResultProduct.value)
+      : normalizedDetail
+    p4ThinkingLines.value = p4Detail.value.thinkingProcess
+    p4ClaimStatus.value = p4Detail.value.benefit.claimStatus
+    p4DetailLoaded.value = true
+    if (p4ClaimStatus.value === 'claimed') {
+      showTimedP4ClaimMessage(p4Detail.value.benefit.claimMessage || '福利已领取，可到我的奖励查看')
+    }
+  }
+
+  const loadP4DetailForBenefit = async () => {
+    if (!backendEnabled || p4DetailLoaded.value) {
+      return p4Status.value === 'success'
+    }
+
+    if (p4Status.value === 'loading') {
+      return false
+    }
+
+    const requestId = p4ExplainRequestId + 1
+    p4ExplainRequestId = requestId
+    p4Status.value = 'loading'
+    clearP4ThinkingTimer()
+    clearP4ClaimMessage()
+    try {
+      const token = await ensureSession()
+      const detail = await apiClient.getExplainDetail({ session_token: token, draw_id: latestDrawId.value })
+      if (requestId !== p4ExplainRequestId) {
+        return false
+      }
+      applyP4Detail(detail)
+      p4Status.value = 'success'
+      trackEvent('explain_load_success', { draw_id: latestDrawId.value, source: 'benefit' })
+      return true
+    } catch {
+      if (requestId !== p4ExplainRequestId) {
+        return false
+      }
+      p4DetailLoaded.value = false
+      p4Status.value = 'error'
+      p4ClaimMessage.value = '福利信息加载失败，请稍后重试'
+      trackEvent('explain_load_fail', { draw_id: latestDrawId.value, source: 'benefit' })
+      return false
+    }
+  }
+
+  const openP2Explain = async ({ trigger = 'ask' } = {}) => {
+    trackEvent(trigger === 'ask' ? 'ask_xiaopu_click' : 'benefit_auto_explain_start')
+    p4ExplainVisible.value = true
     p2Panel.value = ''
     clearP4ClaimMessage()
     p5UseMessage.value = ''
     p6ActionMessage.value = ''
     showP5ClaimSuccess.value = false
+
+    if (p4Status.value === 'loading') {
+      return
+    }
+
+    if (backendEnabled && p4DetailLoaded.value && p4Status.value === 'success') {
+      trackEvent('ai_explain_page_view', { draw_id: latestDrawId.value })
+      trackEvent('ai_explain_render_success', { draw_id: latestDrawId.value })
+      return
+    }
 
     if (backendEnabled) {
       const requestId = p4ExplainRequestId + 1
@@ -1251,16 +1303,8 @@ export function useP1Activity(options = {}) {
         if (requestId !== p4ExplainRequestId || p4Status.value !== 'loading') {
           return
         }
-        if (detail.draw_id || detail.drawId) {
-          latestDrawId.value = detail.draw_id ?? detail.drawId
-        }
-        p4Detail.value = normalizeP4Detail(detail)
-        p4ThinkingLines.value = p4Detail.value.thinkingProcess
+        applyP4Detail(detail)
         stopP4Thinking()
-        p4ClaimStatus.value = p4Detail.value.benefit.claimStatus
-        if (p4ClaimStatus.value === 'claimed') {
-          showTimedP4ClaimMessage(p4Detail.value.benefit.claimMessage || '福利已领取，可到我的奖励查看')
-        }
         p4Status.value = 'success'
         trackEvent('explain_load_success', { draw_id: latestDrawId.value })
         trackEvent('ai_explain_page_view', { draw_id: latestDrawId.value })
@@ -1275,11 +1319,31 @@ export function useP1Activity(options = {}) {
           return
         }
         stopP4Thinking()
+        p4DetailLoaded.value = false
         p4Status.value = 'error'
         trackEvent('explain_load_fail', { draw_id: latestDrawId.value })
         trackEvent('ai_explain_load_fail', { draw_id: latestDrawId.value })
       }
+      return
     }
+
+    p4Status.value = 'success'
+    p4DetailLoaded.value = true
+  }
+
+  const openP2Benefit = async () => {
+    if (backendEnabled && (!p4DetailLoaded.value || p4Status.value === 'error')) {
+      const ready = await loadP4DetailForBenefit()
+      if (!ready) {
+        return
+      }
+    }
+
+    if (p4Status.value !== 'success') {
+      return
+    }
+
+    await claimP4Benefit()
   }
 
   const goP2Back = () => {
@@ -1717,12 +1781,12 @@ export function useP1Activity(options = {}) {
 
     if (isGift && !isGiftAvailable) {
       trackEvent('reward_not_qualified_click')
-      p6ActionMessage.value = '鏆傛湭杈炬爣锛氬垎浜?涓ソ鍙嬶紝鎴栫疮璁＄偣浜?澶╁悗鍙娇鐢?85鍜岀墰绀肩洅鎶藉璧勬牸銆?'
+      p6ActionMessage.value = '暂未达标：分享5个好友，或累计点亮7天后可使用985和牛礼盒抽奖资格。'
       return
     }
 
     if (!isCouponAvailable && !isGiftAvailable) {
-      p6ActionMessage.value = '璇ュ鍔卞綋鍓嶄笉鍙娇鐢ㄣ€?'
+      p6ActionMessage.value = '该奖励当前不可使用。'
       return
     }
 
@@ -1737,7 +1801,7 @@ export function useP1Activity(options = {}) {
       return
     }
 
-    p6ActionMessage.value = '鍒稿寘鍏ュ彛鏆傛湭寮€鏀撅紝鍚庣画鎸?action.type 鎵挎帴鐪熷疄璺宠浆銆?'
+    p6ActionMessage.value = '券包入口暂未开放，请稍后再试。'
     trackEvent('reward_use_redirect_fail')
   }
 
@@ -1749,13 +1813,13 @@ export function useP1Activity(options = {}) {
     trackEvent('product_recommend_click')
     if (
       backendEnabled &&
-      runConfiguredAction(p6Center.value.product_recommend?.action, p6ActionMessage, '鍟嗗搧璇︽儏鍏ュ彛鏆傛湭寮€鏀撅紝璇风◢鍚庡啀璇曘€?')
+      runConfiguredAction(p6Center.value.product_recommend?.action, p6ActionMessage, '商品详情入口暂未开放，请稍后再试。')
     ) {
       trackEvent('product_recommend_redirect_success')
       return
     }
 
-    p6ActionMessage.value = '鍟嗗搧璇︽儏鍏ュ彛鏆傛湭寮€鏀撅紝鍚庣画鎸?action.type 鎵挎帴鐪熷疄璺宠浆銆?'
+    p6ActionMessage.value = '商品详情入口暂未开放，请稍后再试。'
     trackEvent('product_recommend_redirect_fail')
   }
 
@@ -1812,6 +1876,7 @@ export function useP1Activity(options = {}) {
     completeShare,
     currentPage,
     drawChance,
+    latestDrawId,
     goHome,
     goP2Back,
     goP4Back,
@@ -1829,6 +1894,7 @@ export function useP1Activity(options = {}) {
     p4ClaimMessage,
     p4ClaimStatus,
     p4Detail,
+    p4ExplainVisible,
     p4ThinkingLines,
     p4VisibleThinkingLines,
     p4Status,
@@ -1851,12 +1917,14 @@ export function useP1Activity(options = {}) {
     goP6Back,
     openP6Product,
     openP6Rules,
+    openP2Benefit,
     goP7Back,
     retryP4Detail,
     retryP6Center,
     retryP2Result,
     shareProgressText,
     shareRewardCount,
+    sessionToken,
     showDrawAnimation,
     drawAnimationStatus,
     showShareGuide,
@@ -1871,5 +1939,6 @@ export function useP1Activity(options = {}) {
     useP5Benefit,
     focusP5MobileInput,
     submitP5MobileClaim,
+    trackEvent,
   }
 }

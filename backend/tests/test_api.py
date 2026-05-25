@@ -46,12 +46,15 @@ class ActivityApiFlowTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.database_path = Path(self.temp_dir.name) / "activity.sqlite3"
+        self.poster_dir = Path(self.temp_dir.name) / "posters"
         self._previous_database_path = os.environ.get("GAOKAO_H5_DB_PATH")
+        self._previous_poster_dir = os.environ.get("GAOKAO_H5_POSTER_DIR")
         self._previous_deepseek_env = {
             key: os.environ.get(key)
             for key in ("DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL", "DEEPSEEK_MODEL", "DEEPSEEK_REASONING_EFFORT")
         }
         os.environ["GAOKAO_H5_DB_PATH"] = str(self.database_path)
+        os.environ["GAOKAO_H5_POSTER_DIR"] = str(self.poster_dir)
         os.environ["DEEPSEEK_API_KEY"] = ""
         os.environ.pop("DEEPSEEK_BASE_URL", None)
         os.environ.pop("DEEPSEEK_MODEL", None)
@@ -65,6 +68,10 @@ class ActivityApiFlowTests(unittest.TestCase):
             os.environ.pop("GAOKAO_H5_DB_PATH", None)
         else:
             os.environ["GAOKAO_H5_DB_PATH"] = self._previous_database_path
+        if self._previous_poster_dir is None:
+            os.environ.pop("GAOKAO_H5_POSTER_DIR", None)
+        else:
+            os.environ["GAOKAO_H5_POSTER_DIR"] = self._previous_poster_dir
         for key, value in self._previous_deepseek_env.items():
             if value is None:
                 os.environ.pop(key, None)
@@ -684,6 +691,35 @@ class ActivityApiFlowTests(unittest.TestCase):
         self.assertGreaterEqual(len(rules_response.json()["rules"]), 7)
         self.assertEqual(tracking_response.status_code, 200)
         self.assertEqual(tracking_response.json()["success"], True)
+
+    def test_poster_save_persists_png_and_returns_readable_image_url(self):
+        session = self._create_session()
+        image_data_url = (
+            "data:image/png;base64,"
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+        )
+
+        response = self.client.post(
+            "/api/poster/save",
+            json={
+                "session_token": session["session_token"],
+                "page_code": "p2",
+                "poster_type": "result_share",
+                "image_data_url": image_data_url,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        payload = response.json()
+        self.assertEqual(payload["success"], True)
+        self.assertEqual(payload["saved"], True)
+        self.assertTrue(payload["poster_id"].startswith("poster_"))
+        self.assertGreater(payload["byte_size"], 0)
+        self.assertTrue((self.poster_dir / f"{payload['poster_id']}.png").exists())
+
+        image_response = self.client.get(payload["poster_url"])
+        self.assertEqual(image_response.status_code, 200)
+        self.assertEqual(image_response.headers["content-type"], "image/png")
 
 
 if __name__ == "__main__":
