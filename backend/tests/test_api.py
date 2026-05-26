@@ -70,15 +70,19 @@ class ActivityApiFlowTests(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.database_path = Path(self.temp_dir.name) / "activity.sqlite3"
         self.poster_dir = Path(self.temp_dir.name) / "posters"
+        self._previous_database_engine = os.environ.get("GAOKAO_H5_DB_ENGINE")
         self._previous_database_path = os.environ.get("GAOKAO_H5_DB_PATH")
         self._previous_poster_dir = os.environ.get("GAOKAO_H5_POSTER_DIR")
         self._previous_poster_max_bytes = os.environ.get("GAOKAO_H5_POSTER_MAX_BYTES")
+        self._previous_admin_token = os.environ.get("GAOKAO_H5_ADMIN_TOKEN")
         self._previous_deepseek_env = {
             key: os.environ.get(key)
             for key in ("DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL", "DEEPSEEK_MODEL", "DEEPSEEK_REASONING_EFFORT")
         }
+        os.environ["GAOKAO_H5_DB_ENGINE"] = "sqlite"
         os.environ["GAOKAO_H5_DB_PATH"] = str(self.database_path)
         os.environ["GAOKAO_H5_POSTER_DIR"] = str(self.poster_dir)
+        os.environ["GAOKAO_H5_ADMIN_TOKEN"] = "unit-test-admin-token"
         os.environ["DEEPSEEK_API_KEY"] = ""
         os.environ.pop("DEEPSEEK_BASE_URL", None)
         os.environ.pop("DEEPSEEK_MODEL", None)
@@ -92,6 +96,10 @@ class ActivityApiFlowTests(unittest.TestCase):
     def tearDown(self):
         self.client.close()
         self._hermes_patch.stop()
+        if self._previous_database_engine is None:
+            os.environ.pop("GAOKAO_H5_DB_ENGINE", None)
+        else:
+            os.environ["GAOKAO_H5_DB_ENGINE"] = self._previous_database_engine
         if self._previous_database_path is None:
             os.environ.pop("GAOKAO_H5_DB_PATH", None)
         else:
@@ -104,6 +112,10 @@ class ActivityApiFlowTests(unittest.TestCase):
             os.environ.pop("GAOKAO_H5_POSTER_MAX_BYTES", None)
         else:
             os.environ["GAOKAO_H5_POSTER_MAX_BYTES"] = self._previous_poster_max_bytes
+        if self._previous_admin_token is None:
+            os.environ.pop("GAOKAO_H5_ADMIN_TOKEN", None)
+        else:
+            os.environ["GAOKAO_H5_ADMIN_TOKEN"] = self._previous_admin_token
         for key, value in self._previous_deepseek_env.items():
             if value is None:
                 os.environ.pop(key, None)
@@ -166,6 +178,9 @@ class ActivityApiFlowTests(unittest.TestCase):
         draw["result"]["reward_code"] = reward_code
         draw["result"]["rewardCode"] = reward_code
         return draw
+
+    def _admin_headers(self):
+        return {"X-Admin-Token": "unit-test-admin-token"}
 
     def _set_draw_chance(self, user_id, chance):
         import sqlite3
@@ -1221,6 +1236,7 @@ class ActivityApiFlowTests(unittest.TestCase):
 
         config_response = self.client.post(
             "/api/admin/grand-prize/draw-config",
+            headers=self._admin_headers(),
             json={
                 "draw_enabled": True,
                 "winning_lottery_nos": [winner_lottery_no],
@@ -1251,6 +1267,26 @@ class ActivityApiFlowTests(unittest.TestCase):
         self.assertIn(loser_lottery_no, loser_after["lottery_status"]["publicity_desc"])
         self.assertNotIn(winner_lottery_no, loser_after["lottery_status"]["publicity_desc"])
 
+    def test_admin_grand_prize_draw_config_requires_admin_token(self):
+        get_response = self.client.get("/api/admin/grand-prize/draw-config")
+        bad_get_response = self.client.get(
+            "/api/admin/grand-prize/draw-config",
+            headers={"X-Admin-Token": "wrong-token"},
+        )
+        post_response = self.client.post(
+            "/api/admin/grand-prize/draw-config",
+            json={"draw_enabled": True, "winning_lottery_nos": ["GP20260527697416"]},
+        )
+        bearer_response = self.client.get(
+            "/api/admin/grand-prize/draw-config",
+            headers={"Authorization": "Bearer unit-test-admin-token"},
+        )
+
+        self.assertEqual(get_response.status_code, 401)
+        self.assertEqual(bad_get_response.status_code, 401)
+        self.assertEqual(post_response.status_code, 401)
+        self.assertEqual(bearer_response.status_code, 200)
+
     def test_admin_grand_prize_draw_config_can_hide_results_until_enabled(self):
         owner = self._create_session("configured_grand_prize_pending")
         share = self.client.post("/api/share/record", json={"session_token": owner["session_token"], "share_channel": "wechat"}).json()
@@ -1264,6 +1300,7 @@ class ActivityApiFlowTests(unittest.TestCase):
 
         response = self.client.post(
             "/api/admin/grand-prize/draw-config",
+            headers=self._admin_headers(),
             json={
                 "draw_enabled": False,
                 "winning_lottery_nos": [lottery_no],
@@ -1296,6 +1333,7 @@ class ActivityApiFlowTests(unittest.TestCase):
 
         response = self.client.post(
             "/api/admin/grand-prize/draw-config",
+            headers=self._admin_headers(),
             json={
                 "draw_enabled": False,
                 "winning_lottery_nos": [lottery_no],
@@ -1304,7 +1342,7 @@ class ActivityApiFlowTests(unittest.TestCase):
             },
         )
         detail = self.client.get("/api/grand-prize/qualification/detail", params={"session_token": owner["session_token"]})
-        config = self.client.get("/api/admin/grand-prize/draw-config")
+        config = self.client.get("/api/admin/grand-prize/draw-config", headers=self._admin_headers())
 
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()["draw_time"], "2026-06-18 10:00")
@@ -1330,6 +1368,7 @@ class ActivityApiFlowTests(unittest.TestCase):
 
         response = self.client.post(
             "/api/admin/grand-prize/draw-config",
+            headers=self._admin_headers(),
             json={
                 "draw_enabled": False,
                 "draw_time": "2020-01-01 10:00",

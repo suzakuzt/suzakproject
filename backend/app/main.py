@@ -1,6 +1,8 @@
+import hmac
+import os
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -25,6 +27,7 @@ from .activity_service import (
     save_grand_prize_draw_config,
 )
 from .health import build_health_status
+from .local_env import load_local_env
 from .poster_service import resolve_poster_path, save_poster
 
 
@@ -116,6 +119,29 @@ class GrandPrizeDrawConfigRequest(BaseModel):
 
 def _handle_api_error(error: ApiError):
     raise HTTPException(status_code=error.status_code, detail=error.message) from error
+
+
+def _extract_bearer_token(value: str | None) -> str:
+    if not value:
+        return ""
+    scheme, _, token = value.strip().partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        return ""
+    return token.strip()
+
+
+def require_admin_token(
+    authorization: str | None = Header(default=None),
+    x_admin_token: str | None = Header(default=None),
+) -> None:
+    load_local_env()
+    expected = os.environ.get("GAOKAO_H5_ADMIN_TOKEN", "").strip()
+    if not expected:
+        raise HTTPException(status_code=503, detail="admin token is not configured")
+
+    supplied = (x_admin_token or "").strip() or _extract_bearer_token(authorization)
+    if not supplied or not hmac.compare_digest(supplied, expected):
+        raise HTTPException(status_code=401, detail="invalid admin token")
 
 
 @app.get("/api/health")
@@ -224,7 +250,7 @@ def grand_prize_qualification_detail(session_token: str = Query(...)):
         _handle_api_error(error)
 
 
-@app.get("/api/admin/grand-prize/draw-config")
+@app.get("/api/admin/grand-prize/draw-config", dependencies=[Depends(require_admin_token)])
 def admin_grand_prize_draw_config(activity_code: str = Query(DEFAULT_ACTIVITY_CODE)):
     try:
         return get_grand_prize_draw_config(activity_code)
@@ -232,7 +258,7 @@ def admin_grand_prize_draw_config(activity_code: str = Query(DEFAULT_ACTIVITY_CO
         _handle_api_error(error)
 
 
-@app.post("/api/admin/grand-prize/draw-config")
+@app.post("/api/admin/grand-prize/draw-config", dependencies=[Depends(require_admin_token)])
 def admin_grand_prize_draw_config_save(request: GrandPrizeDrawConfigRequest):
     try:
         return save_grand_prize_draw_config(request.model_dump())
