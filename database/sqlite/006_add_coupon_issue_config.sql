@@ -44,10 +44,10 @@ INSERT INTO coupon_issue_config (
 )
 VALUES
   ('gaokao_lucky_sign_2026', 'coupon_10', 'hermes', '一举高中·无门槛10元优惠券', 2605150000000112, 2605150000000126, 1, '2026-05-15 11:00:00', '2026-06-30 23:59:59', '10', 'enabled', 10, '{"source":"portal.hermes.manualImport"}'),
-  ('gaokao_lucky_sign_2026', 'coupon_20', 'hermes', '一举高中·无门槛20元优惠券', 2605150000000112, 2605150000000126, 1, '2026-05-15 11:00:00', '2026-06-30 23:59:59', '20', 'disabled', 20, '{"source":"portal.hermes.manualImport"}'),
-  ('gaokao_lucky_sign_2026', 'coupon_30', 'hermes', '一举高中·无门槛30元优惠券', 2605150000000112, 2605150000000126, 1, '2026-05-15 11:00:00', '2026-06-30 23:59:59', '30', 'disabled', 30, '{"source":"portal.hermes.manualImport"}'),
-  ('gaokao_lucky_sign_2026', 'discount_9', 'hermes', '一举高中·9折优惠券', 2605150000000112, 2605150000000126, 1, '2026-05-15 11:00:00', '2026-06-30 23:59:59', '9', 'disabled', 40, '{"source":"portal.hermes.manualImport"}'),
-  ('gaokao_lucky_sign_2026', 'discount_75', 'hermes', '一举高中·7.5折优惠券', 2605150000000112, 2605150000000126, 1, '2026-05-15 11:00:00', '2026-06-30 23:59:59', '7.5', 'disabled', 50, '{"source":"portal.hermes.manualImport"}')
+  ('gaokao_lucky_sign_2026', 'coupon_20', 'hermes', '一举高中·无门槛20元优惠券', 2605250000000014, 2605250000000028, 1, '2026-05-27 00:00:00', '2026-06-30 23:59:59', '20', 'enabled', 20, '{"source":"portal.hermes.manualImport"}'),
+  ('gaokao_lucky_sign_2026', 'coupon_30', 'hermes', '一举高中·无门槛30元优惠券', 2605260000000010, 2605260000000024, 1, '2026-05-27 00:00:00', '2026-06-30 23:59:59', '30', 'enabled', 30, '{"source":"portal.hermes.manualImport"}'),
+  ('gaokao_lucky_sign_2026', 'discount_9', 'hermes', '一举高中·无门槛9折优惠券', 2605260000000025, 2605260000000039, 1, '2026-05-27 00:00:00', '2026-06-30 23:59:59', '9', 'enabled', 40, '{"source":"portal.hermes.manualImport"}'),
+  ('gaokao_lucky_sign_2026', 'discount_75', 'hermes', '一举高中·7.5折优惠券', 2605260000000040, 2605260000000055, 1, '2026-05-27 00:00:00', '2026-06-30 23:59:59', '7.5', 'enabled', 50, '{"source":"portal.hermes.manualImport"}')
 ON CONFLICT(activity_code, reward_code, issue_channel) DO UPDATE SET
   hermes_title = excluded.hermes_title,
   hermes_id = excluded.hermes_id,

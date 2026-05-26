@@ -16,13 +16,13 @@ VALUES (
   'gaokao_lucky_sign_2026',
   '一举高中 · 六月牛气加油签',
   'active',
-  1,
+  1000,
   3,
   5,
   7,
   '985 和牛礼盒',
   '[
-    {"rule_no":1,"content":"每人每日默认 1 次抽签机会；"},
+    {"rule_no":1,"content":"每人每日默认 1000 次抽签机会；"},
     {"rule_no":2,"content":"分享好友参与并完成抽签，原用户增加 1 次助力进度；"},
     {"rule_no":3,"content":"每日通过分享最多获得 3 次额外机会；"},
     {"rule_no":4,"content":"每日完成抽签后，自动点亮 1 天进度，每天最多点亮 1 天；"},
@@ -145,7 +145,7 @@ VALUES
   ('gaokao_lucky_sign_2026', 'coupon_30', 'coupon', '无门槛30元券', '30', '无门槛券', '30元', '/assets/p6/element_coupon_30yuan_card.png', '去使用', 'mini_program_coupon_package', '/pages/my-coupon/index', 0, 'enabled', 30, '{"unit_text":"元","threshold_text":"无门槛"}'),
   ('gaokao_lucky_sign_2026', 'discount_9', 'discount_coupon', '9折券', '9折', '全场可用', '9折', '/assets/p6/element_coupon_9off_card.png', '去使用', 'mini_program_coupon_package', '/pages/my-coupon/index', 0, 'enabled', 40, '{"unit_text":"","threshold_text":"全场可用"}'),
   ('gaokao_lucky_sign_2026', 'discount_75', 'discount_coupon', '7.5折券', '7.5折', '西冷牛排专属', '7.5折', '/assets/p6/element_coupon_75off_card.png', '去使用', 'mini_program_coupon_package', '/pages/my-coupon/index', 0, 'enabled', 50, '{"unit_text":"","threshold_text":"西冷牛排专属"}'),
-  ('gaokao_lucky_sign_2026', 'gift_985', 'grand_prize', '985和牛礼盒', '985和牛礼盒', '抽奖资格', NULL, NULL, '未达标', 'gift_qualification_detail', '/activity/grand-prize', 1, 'enabled', 990, '{"locked_button_text":"未达标","unlocked_button_text":"去使用","reward_type_for_frontend":"gift_lottery_qualification"}'),
+  ('gaokao_lucky_sign_2026', 'gift_985', 'grand_prize', '985和牛礼盒', '985和牛礼盒', '抽奖资格', NULL, NULL, '未达标', 'mini_program_product_detail', '/pages/product/detail?id=gift_985', 1, 'enabled', 990, '{"locked_button_text":"未达标","unlocked_button_text":"去查看","reward_type_for_frontend":"gift_lottery_qualification"}'),
   ('gaokao_lucky_sign_2026', 'coupon_50', 'coupon', '50元券', '50元券', '企微领取', '50元', NULL, '去领取', 'mini_program_coupon_package', '/pages/my-coupon/index', 0, 'enabled', 60, '{"source":"DEFAULT_P8_PRIZE.benefits"}')
 ON DUPLICATE KEY UPDATE
   reward_type = VALUES(reward_type),
@@ -168,10 +168,10 @@ INSERT INTO coupon_issue_config (
 )
 VALUES
   ('gaokao_lucky_sign_2026', 'coupon_10', 'hermes', '一举高中·无门槛10元优惠券', 2605150000000112, 2605150000000126, 1, '2026-05-15 11:00:00', '2026-06-30 23:59:59', '10', 'enabled', 10, '{"source":"portal.hermes.manualImport"}'),
-  ('gaokao_lucky_sign_2026', 'coupon_20', 'hermes', '一举高中·无门槛20元优惠券', 2605150000000112, 2605150000000126, 1, '2026-05-15 11:00:00', '2026-06-30 23:59:59', '20', 'disabled', 20, '{"source":"portal.hermes.manualImport"}'),
-  ('gaokao_lucky_sign_2026', 'coupon_30', 'hermes', '一举高中·无门槛30元优惠券', 2605150000000112, 2605150000000126, 1, '2026-05-15 11:00:00', '2026-06-30 23:59:59', '30', 'disabled', 30, '{"source":"portal.hermes.manualImport"}'),
-  ('gaokao_lucky_sign_2026', 'discount_9', 'hermes', '一举高中·9折优惠券', 2605150000000112, 2605150000000126, 1, '2026-05-15 11:00:00', '2026-06-30 23:59:59', '9', 'disabled', 40, '{"source":"portal.hermes.manualImport"}'),
-  ('gaokao_lucky_sign_2026', 'discount_75', 'hermes', '一举高中·7.5折优惠券', 2605150000000112, 2605150000000126, 1, '2026-05-15 11:00:00', '2026-06-30 23:59:59', '7.5', 'disabled', 50, '{"source":"portal.hermes.manualImport"}')
+  ('gaokao_lucky_sign_2026', 'coupon_20', 'hermes', '一举高中·无门槛20元优惠券', 2605250000000014, 2605250000000028, 1, '2026-05-27 00:00:00', '2026-06-30 23:59:59', '20', 'enabled', 20, '{"source":"portal.hermes.manualImport"}'),
+  ('gaokao_lucky_sign_2026', 'coupon_30', 'hermes', '一举高中·无门槛30元优惠券', 2605260000000010, 2605260000000024, 1, '2026-05-27 00:00:00', '2026-06-30 23:59:59', '30', 'enabled', 30, '{"source":"portal.hermes.manualImport"}'),
+  ('gaokao_lucky_sign_2026', 'discount_9', 'hermes', '一举高中·无门槛9折优惠券', 2605260000000025, 2605260000000039, 1, '2026-05-27 00:00:00', '2026-06-30 23:59:59', '9', 'enabled', 40, '{"source":"portal.hermes.manualImport"}'),
+  ('gaokao_lucky_sign_2026', 'discount_75', 'hermes', '一举高中·7.5折优惠券', 2605260000000040, 2605260000000055, 1, '2026-05-27 00:00:00', '2026-06-30 23:59:59', '7.5', 'enabled', 50, '{"source":"portal.hermes.manualImport"}')
 ON DUPLICATE KEY UPDATE
   hermes_title = VALUES(hermes_title),
   hermes_id = VALUES(hermes_id),
@@ -288,5 +288,271 @@ ON DUPLICATE KEY UPDATE
   status = VALUES(status),
   sort_order = VALUES(sort_order),
   ext_json = VALUES(ext_json);
+
+INSERT INTO draw_result_config (
+  activity_code, result_code, result_level, result_title, main_text, good_text, avoid_text,
+  explain_title, explain_content, tags_json, product_code, reward_code, status, sort_order, ext_json
+)
+VALUES
+  (
+    'gaokao_lucky_sign_2026',
+    'sign_001',
+    '上上签',
+    '牛转乾坤',
+    '牛转乾坤',
+    '吉｜坏事开始转弯',
+    '吉｜压力自动降噪',
+    'AI解签结果',
+    '今日运势像卡住的电梯终于动了。早上可能还在怀疑人生，下午就发现事情没你想的那么糟。难搞的需求会出现转机，烦人的消息也可能突然没人追了。今日宜稳住，忌在工位上表演灵魂出窍。',
+    '["牛转乾坤","坏事开始转弯","压力自动降噪"]',
+    'sku_001',
+    'coupon_10',
+    'enabled',
+    10,
+    '{"sign_type":"牛转乾坤","main_text_columns":["牛转乾坤"],"explain_text":"今日运势像卡住的电梯终于动了。早上可能还在怀疑人生，下午就发现事情没你想的那么糟。难搞的需求会出现转机，烦人的消息也可能突然没人追了。今日宜稳住，忌在工位上表演灵魂出窍。","theme_text":"牛气好运 × 工作顺利","benefit_id":"default-benefit","claim_button_text":"领取专属福利"}'
+  ),
+  (
+    'gaokao_lucky_sign_2026',
+    'sign_002',
+    '上上签',
+    '牛气冲天',
+    '牛气冲天',
+    '吉｜气场撑满工位',
+    '吉｜老板少问一句',
+    'AI解签结果',
+    '抽到此签，说明你今天不一定很闲，但一定很能扛。会议里不用每句话都接，微笑点头也是一种高级输出。别人看你淡定，其实你只是把崩溃压缩成了一个“收到”。今日宜假装从容，忌把心里话发进工作群。',
+    '["牛气冲天","气场撑满工位","老板少问一句"]',
+    'sku_002',
+    'coupon_10',
+    'enabled',
+    20,
+    '{"sign_type":"牛气冲天","main_text_columns":["牛气冲天"],"explain_text":"抽到此签，说明你今天不一定很闲，但一定很能扛。会议里不用每句话都接，微笑点头也是一种高级输出。别人看你淡定，其实你只是把崩溃压缩成了一个“收到”。今日宜假装从容，忌把心里话发进工作群。","theme_text":"牛气好运 × 工作顺利","benefit_id":"default-benefit","claim_button_text":"领取专属福利"}'
+  ),
+  (
+    'gaokao_lucky_sign_2026',
+    'sign_003',
+    '上上签',
+    '九牛一毛',
+    '九牛一毛',
+    '吉｜小事不值得破防',
+    '吉｜烦恼只占一格',
+    'AI解签结果',
+    '今天的麻烦看起来很多，但大部分只是纸老虎、假警报和无效通知。真正重要的事只有一两件，其他都属于“看见了但先不看”。把待办拆小，先处理能交差的，剩下的让时间替你冷却一下。',
+    '["九牛一毛","小事不值得破防","烦恼只占一格"]',
+    'sku_003',
+    'coupon_10',
+    'enabled',
+    30,
+    '{"sign_type":"九牛一毛","main_text_columns":["九牛一毛"],"explain_text":"今天的麻烦看起来很多，但大部分只是纸老虎、假警报和无效通知。真正重要的事只有一两件，其他都属于“看见了但先不看”。把待办拆小，先处理能交差的，剩下的让时间替你冷却一下。","theme_text":"牛气好运 × 工作顺利","benefit_id":"default-benefit","claim_button_text":"领取专属福利"}'
+  ),
+  (
+    'gaokao_lucky_sign_2026',
+    'sign_004',
+    '上上签',
+    '对牛弹琴',
+    '对牛弹琴',
+    '吉｜废话自动屏蔽',
+    '吉｜无效沟通退散',
+    'AI解签结果',
+    '此签不是说你不行，是提醒你：别把深度思考浪费在只想听“可以”的人身上。今天适合少解释、多截图、留证据。遇到讲不通的人，不必硬刚，保存体力才是成年人真正的智慧。',
+    '["对牛弹琴","废话自动屏蔽","无效沟通退散"]',
+    'sku_004',
+    'coupon_10',
+    'enabled',
+    40,
+    '{"sign_type":"对牛弹琴","main_text_columns":["对牛弹琴"],"explain_text":"此签不是说你不行，是提醒你：别把深度思考浪费在只想听“可以”的人身上。今天适合少解释、多截图、留证据。遇到讲不通的人，不必硬刚，保存体力才是成年人真正的智慧。","theme_text":"牛气好运 × 工作顺利","benefit_id":"default-benefit","claim_button_text":"领取专属福利"}'
+  ),
+  (
+    'gaokao_lucky_sign_2026',
+    'sign_005',
+    '上上签',
+    '汗牛充栋',
+    '汗牛充栋',
+    '吉｜文件堆里有路',
+    '吉｜周报越写越顺',
+    'AI解签结果',
+    '抽到此签，说明今日信息量巨大：消息很多、文档很多、需求也很多。但别慌，混乱只是表面，真正要紧的东西藏在前三行和最后一句。今日宜抓重点，忌把所有附件都认真读完。',
+    '["汗牛充栋","文件堆里有路","周报越写越顺"]',
+    'sku_001',
+    'coupon_10',
+    'enabled',
+    50,
+    '{"sign_type":"汗牛充栋","main_text_columns":["汗牛充栋"],"explain_text":"抽到此签，说明今日信息量巨大：消息很多、文档很多、需求也很多。但别慌，混乱只是表面，真正要紧的东西藏在前三行和最后一句。今日宜抓重点，忌把所有附件都认真读完。","theme_text":"牛气好运 × 工作顺利","benefit_id":"default-benefit","claim_button_text":"领取专属福利"}'
+  ),
+  (
+    'gaokao_lucky_sign_2026',
+    'sign_006',
+    '上上签',
+    '目无全牛',
+    '目无全牛',
+    '吉｜任务一拆就明',
+    '吉｜难题自动露馅',
+    'AI解签结果',
+    '此签代表你今天适合处理复杂问题。别人看到一整坨麻烦，你能拆成“先做这个、再糊那个、最后假装很完整”。所谓高手，不是没有压力，而是能把压力切成待办事项。今日宜拆解，忌盯着总量发呆。',
+    '["目无全牛","任务一拆就明","难题自动露馅"]',
+    'sku_002',
+    'coupon_10',
+    'enabled',
+    60,
+    '{"sign_type":"目无全牛","main_text_columns":["目无全牛"],"explain_text":"此签代表你今天适合处理复杂问题。别人看到一整坨麻烦，你能拆成“先做这个、再糊那个、最后假装很完整”。所谓高手，不是没有压力，而是能把压力切成待办事项。今日宜拆解，忌盯着总量发呆。","theme_text":"牛气好运 × 工作顺利","benefit_id":"default-benefit","claim_button_text":"领取专属福利"}'
+  ),
+  (
+    'gaokao_lucky_sign_2026',
+    'sign_007',
+    '上上签',
+    '牛刀小试',
+    '牛刀小试',
+    '吉｜随手也能过关',
+    '吉｜交付刚好在线',
+    'AI解签结果',
+    '今天不用一上来就燃烧自己。有些任务看着很正式，实际只需要你拿出三分力、七分格式感。能复用的别重写，能模板的别原创，能一句话讲清的别做十页。今日宜轻装上阵，忌用力过猛。',
+    '["牛刀小试","随手也能过关","交付刚好在线"]',
+    'sku_003',
+    'coupon_10',
+    'enabled',
+    70,
+    '{"sign_type":"牛刀小试","main_text_columns":["牛刀小试"],"explain_text":"今天不用一上来就燃烧自己。有些任务看着很正式，实际只需要你拿出三分力、七分格式感。能复用的别重写，能模板的别原创，能一句话讲清的别做十页。今日宜轻装上阵，忌用力过猛。","theme_text":"牛气好运 × 工作顺利","benefit_id":"default-benefit","claim_button_text":"领取专属福利"}'
+  ),
+  (
+    'gaokao_lucky_sign_2026',
+    'sign_008',
+    '上上签',
+    '气冲斗牛',
+    '气冲斗牛',
+    '吉｜火气化成效率',
+    '吉｜怨气转为产出',
+    'AI解签结果',
+    '抽到此签，说明你今天可能有点想爆炸，但爆炸之前先把活干完，会显得更有杀伤力。把不爽写进备忘录，别写进聊天框；把情绪变成行动，别变成语音六十秒。今日宜冷脸办事，忌激情回复。',
+    '["气冲斗牛","火气化成效率","怨气转为产出"]',
+    'sku_004',
+    'coupon_10',
+    'enabled',
+    80,
+    '{"sign_type":"气冲斗牛","main_text_columns":["气冲斗牛"],"explain_text":"抽到此签，说明你今天可能有点想爆炸，但爆炸之前先把活干完，会显得更有杀伤力。把不爽写进备忘录，别写进聊天框；把情绪变成行动，别变成语音六十秒。今日宜冷脸办事，忌激情回复。","theme_text":"牛气好运 × 工作顺利","benefit_id":"default-benefit","claim_button_text":"领取专属福利"}'
+  )
+ON DUPLICATE KEY UPDATE
+  result_level = VALUES(result_level),
+  result_title = VALUES(result_title),
+  main_text = VALUES(main_text),
+  good_text = VALUES(good_text),
+  avoid_text = VALUES(avoid_text),
+  explain_title = VALUES(explain_title),
+  explain_content = VALUES(explain_content),
+  tags_json = VALUES(tags_json),
+  product_code = VALUES(product_code),
+  reward_code = VALUES(reward_code),
+  status = VALUES(status),
+  sort_order = VALUES(sort_order),
+  ext_json = VALUES(ext_json);
+
+INSERT INTO draw_result_config (
+  activity_code, result_code, result_level, result_title, main_text, good_text, avoid_text,
+  explain_title, explain_content, tags_json, product_code, reward_code, status, sort_order, ext_json
+)
+VALUES
+  (
+    'gaokao_lucky_sign_2026',
+    'sign_001',
+    '上上签',
+    '过儿签',
+    '考试期间，不要叫我真名，叫我过儿。',
+    '',
+    '',
+    'AI解签结果',
+    '此签一出，主打一个“精神改名大法”。\n名字先改成过儿，至于能不能过，先把气势拿捏住。\n遇事不要慌，先给自己取个吉利名，生活问你准备好了吗，你说：别问，问就是正在加载中。',
+    '["过儿签","考试玄学","高考好运"]',
+    'sku_001',
+    'coupon_10',
+    'enabled',
+    10,
+    '{"sign_type":"过儿签","fortune_headline":"过儿签","fortune_hint":"考试期间，不要叫我真名，叫我过儿。","main_text_columns":["考试期间，不要叫我真名，叫我过儿。"],"explain_text":"此签一出，主打一个“精神改名大法”。\n名字先改成过儿，至于能不能过，先把气势拿捏住。\n遇事不要慌，先给自己取个吉利名，生活问你准备好了吗，你说：别问，问就是正在加载中。","theme_text":"高考好运 × 考前放轻松","benefit_id":"default-benefit","claim_button_text":"领取专属福利"}'
+  ),
+  (
+    'gaokao_lucky_sign_2026',
+    'sign_002',
+    '上上签',
+    '范围签',
+    '世界上最宽广的是什么？考试范围。',
+    '',
+    '',
+    'AI解签结果',
+    '抽到此签，说明你最近可能会被“范围”两个字创到。\n别人的范围是重点，你的范围是宇宙。\n但问题不大，人生嘛，主打一个边走边搜题，边慌边体面。',
+    '["范围签","考试范围","高考好运"]',
+    'sku_002',
+    'coupon_10',
+    'enabled',
+    20,
+    '{"sign_type":"范围签","fortune_headline":"范围签","fortune_hint":"世界上最宽广的是什么？考试范围。","main_text_columns":["世界上最宽广的是什么？考试范围。"],"explain_text":"抽到此签，说明你最近可能会被“范围”两个字创到。\n别人的范围是重点，你的范围是宇宙。\n但问题不大，人生嘛，主打一个边走边搜题，边慌边体面。","theme_text":"高考好运 × 考前放轻松","benefit_id":"default-benefit","claim_button_text":"领取专属福利"}'
+  ),
+  (
+    'gaokao_lucky_sign_2026',
+    'sign_003',
+    '上上签',
+    '预习签',
+    '快要考试了，别人在复习，自己在预习。',
+    '',
+    '',
+    'AI解签结果',
+    '此签预示着：你不是落后，你只是选择了“压轴登场”。\n别人是二刷三刷，你是首次公测。\n虽然起步晚，但仪式感很足，翻开书的那一刻，知识都愣了一下：哟，你终于来了。',
+    '["预习签","压轴登场","高考好运"]',
+    'sku_003',
+    'coupon_10',
+    'enabled',
+    30,
+    '{"sign_type":"预习签","fortune_headline":"预习签","fortune_hint":"快要考试了，别人在复习，自己在预习。","main_text_columns":["快要考试了，别人在复习，自己在预习。"],"explain_text":"此签预示着：你不是落后，你只是选择了“压轴登场”。\n别人是二刷三刷，你是首次公测。\n虽然起步晚，但仪式感很足，翻开书的那一刻，知识都愣了一下：哟，你终于来了。","theme_text":"高考好运 × 考前放轻松","benefit_id":"default-benefit","claim_button_text":"领取专属福利"}'
+  ),
+  (
+    'gaokao_lucky_sign_2026',
+    'sign_004',
+    '上上签',
+    '磕头签',
+    '给书磕个头，就当是复习过了吧。',
+    '',
+    '',
+    'AI解签结果',
+    '此签属于玄学派代表。\n书可以不熟，但礼数必须到位。\n建议磕完头顺手翻两页，不然知识收到祝福后，也不知道该往你脑子里走哪条路。',
+    '["磕头签","考试玄学","高考好运"]',
+    'sku_004',
+    'coupon_10',
+    'enabled',
+    40,
+    '{"sign_type":"磕头签","fortune_headline":"磕头签","fortune_hint":"给书磕个头，就当是复习过了吧。","main_text_columns":["给书磕个头，就当是复习过了吧。"],"explain_text":"此签属于玄学派代表。\n书可以不熟，但礼数必须到位。\n建议磕完头顺手翻两页，不然知识收到祝福后，也不知道该往你脑子里走哪条路。","theme_text":"高考好运 × 考前放轻松","benefit_id":"default-benefit","claim_button_text":"领取专属福利"}'
+  ),
+  (
+    'gaokao_lucky_sign_2026',
+    'sign_005',
+    '上上签',
+    '粘锅签',
+    '想在这次考试咸鱼翻身的，没想到粘锅了。',
+    '',
+    '',
+    'AI解签结果',
+    '抽到此签，说明你最近很想逆袭，但锅可能有点不粘梦想。\n不过咸鱼粘锅也不是坏事，至少证明你真的动过。\n人生就是这样，翻身不成也别急，先撒点孜然，换个角度继续香。',
+    '["粘锅签","咸鱼翻身","高考好运"]',
+    'sku_001',
+    'coupon_10',
+    'enabled',
+    50,
+    '{"sign_type":"粘锅签","fortune_headline":"粘锅签","fortune_hint":"想在这次考试咸鱼翻身的，没想到粘锅了。","main_text_columns":["想在这次考试咸鱼翻身的，没想到粘锅了。"],"explain_text":"抽到此签，说明你最近很想逆袭，但锅可能有点不粘梦想。\n不过咸鱼粘锅也不是坏事，至少证明你真的动过。\n人生就是这样，翻身不成也别急，先撒点孜然，换个角度继续香。","theme_text":"高考好运 × 考前放轻松","benefit_id":"default-benefit","claim_button_text":"领取专属福利"}'
+  )
+ON DUPLICATE KEY UPDATE
+  result_level = VALUES(result_level),
+  result_title = VALUES(result_title),
+  main_text = VALUES(main_text),
+  good_text = VALUES(good_text),
+  avoid_text = VALUES(avoid_text),
+  explain_title = VALUES(explain_title),
+  explain_content = VALUES(explain_content),
+  tags_json = VALUES(tags_json),
+  product_code = VALUES(product_code),
+  reward_code = VALUES(reward_code),
+  status = VALUES(status),
+  sort_order = VALUES(sort_order),
+  ext_json = VALUES(ext_json);
+
+UPDATE draw_result_config
+SET status = 'disabled'
+WHERE activity_code = 'gaokao_lucky_sign_2026'
+  AND result_code IN ('sign_006', 'sign_007', 'sign_008');
 
 COMMIT;

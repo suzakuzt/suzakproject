@@ -1,3 +1,4 @@
+import json
 import sqlite3
 import unittest
 from pathlib import Path
@@ -30,7 +31,8 @@ class DatabaseConnectionTests(unittest.TestCase):
         self.assertIn("user_daily_state", names)
         self.assertIn("draw_record", names)
         self.assertIn("coupon_issue_config", names)
-        self.assertEqual(len(names), 17)
+        self.assertIn("grand_prize_draw_config", names)
+        self.assertEqual(len(names), 18)
 
     def test_fetch_one_returns_dictionary_or_none(self):
         with connection() as conn:
@@ -48,7 +50,7 @@ class ActivityRepositoryTests(unittest.TestCase):
             config = repo.get_activity_state_config("gaokao_lucky_sign_2026")
 
         self.assertEqual(config["activity_code"], "gaokao_lucky_sign_2026")
-        self.assertEqual(config["daily_default_chance"], 1)
+        self.assertEqual(config["daily_default_chance"], 1000)
         self.assertEqual(config["daily_share_bonus_limit"], 3)
         self.assertEqual(config["share_target"], 5)
         self.assertEqual(config["checkin_target"], 7)
@@ -68,15 +70,55 @@ class ActivityRepositoryTests(unittest.TestCase):
             },
         )
 
+    def test_draw_result_config_reads_seeded_exam_sign_library_without_side_copy(self):
+        expected_titles = [
+            "过儿签",
+            "范围签",
+            "预习签",
+            "磕头签",
+            "粘锅签",
+        ]
+        expected_main_texts = [
+            "考试期间，不要叫我真名，叫我过儿。",
+            "世界上最宽广的是什么？考试范围。",
+            "快要考试了，别人在复习，自己在预习。",
+            "给书磕个头，就当是复习过了吧。",
+            "想在这次考试咸鱼翻身的，没想到粘锅了。",
+        ]
+
+        with connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT result_code, result_title, main_text, good_text, avoid_text, explain_content, ext_json
+                FROM draw_result_config
+                WHERE activity_code = ? AND status = 'enabled'
+                ORDER BY sort_order ASC, id ASC
+                """,
+                ("gaokao_lucky_sign_2026",),
+            ).fetchall()
+
+        self.assertEqual([row["result_code"] for row in rows], [f"sign_{index:03d}" for index in range(1, 6)])
+        self.assertEqual([row["result_title"] for row in rows], expected_titles)
+        self.assertEqual([row["main_text"] for row in rows], expected_main_texts)
+        self.assertTrue(all(row["good_text"] == "" for row in rows))
+        self.assertTrue(all(row["avoid_text"] == "" for row in rows))
+        self.assertIn("此签一出，主打一个“精神改名大法”", rows[0]["explain_content"])
+        first_ext = json.loads(rows[0]["ext_json"])
+        self.assertEqual(first_ext["sign_type"], "过儿签")
+        self.assertEqual(first_ext["main_text_columns"], ["考试期间，不要叫我真名，叫我过儿。"])
+        self.assertEqual(first_ext["fortune_headline"], "过儿签")
+        self.assertEqual(first_ext["fortune_hint"], "考试期间，不要叫我真名，叫我过儿。")
+        self.assertIn("名字先改成过儿", first_ext["explain_text"])
+
 
 class HealthStatusTests(unittest.TestCase):
     def test_build_health_status_returns_database_and_seed_summary(self):
         status = build_health_status("gaokao_lucky_sign_2026")
 
         self.assertEqual(status["database"]["connected"], True)
-        self.assertEqual(status["database"]["table_count"], 17)
+        self.assertEqual(status["database"]["table_count"], 18)
         self.assertEqual(status["activity"]["activity_code"], "gaokao_lucky_sign_2026")
-        self.assertEqual(status["activity"]["daily_default_chance"], 1)
+        self.assertEqual(status["activity"]["daily_default_chance"], 1000)
         self.assertEqual(status["seed_counts"]["reward_count"], 7)
 
 

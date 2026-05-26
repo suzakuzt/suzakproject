@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS activity_config (
   status VARCHAR(16) NOT NULL DEFAULT 'draft',
   start_at DATETIME NULL,
   end_at DATETIME NULL,
-  daily_default_chance INT NOT NULL DEFAULT 1,
+  daily_default_chance INT NOT NULL DEFAULT 1000,
   daily_share_bonus_limit INT NOT NULL DEFAULT 3,
   share_target INT NOT NULL DEFAULT 5,
   checkin_target INT NOT NULL DEFAULT 7,
@@ -193,10 +193,10 @@ CREATE TABLE IF NOT EXISTS user_daily_state (
   activity_code VARCHAR(64) NOT NULL,
   user_id BIGINT NOT NULL,
   biz_date DATE NOT NULL,
-  base_draw_chance INT NOT NULL DEFAULT 1,
+  base_draw_chance INT NOT NULL DEFAULT 1000,
   extra_draw_chance INT NOT NULL DEFAULT 0,
   used_draw_count INT NOT NULL DEFAULT 0,
-  remaining_draw_count INT NOT NULL DEFAULT 1,
+  remaining_draw_count INT NOT NULL DEFAULT 1000,
   share_reward_count_today INT NOT NULL DEFAULT 0,
   checked_in_today TINYINT(1) NOT NULL DEFAULT 0,
   status VARCHAR(16) NOT NULL DEFAULT 'active',
@@ -395,6 +395,7 @@ CREATE TABLE IF NOT EXISTS grand_prize_qualification (
   shared_count INT NOT NULL DEFAULT 0,
   lit_days INT NOT NULL DEFAULT 0,
   lottery_no VARCHAR(128) UNIQUE,
+  lottery_suffix VARCHAR(6) UNIQUE,
   lottery_status VARCHAR(32) NOT NULL DEFAULT 'pending',
   qrcode_id VARCHAR(128) NULL,
   qrcode_url VARCHAR(512) NULL,
@@ -406,6 +407,7 @@ CREATE TABLE IF NOT EXISTS grand_prize_qualification (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uk_grand_prize_user (activity_code, user_id),
+  UNIQUE KEY uk_grand_prize_lottery_suffix (lottery_suffix),
   KEY idx_grand_prize_status (activity_code, qualify_status, lottery_status),
   KEY idx_grand_prize_source (activity_code, qualification_source_type, qualification_source_id),
   CONSTRAINT fk_grand_prize_activity FOREIGN KEY (activity_code) REFERENCES activity_config(activity_code),
@@ -415,6 +417,20 @@ CREATE TABLE IF NOT EXISTS grand_prize_qualification (
   CHECK (shared_count >= 0),
   CHECK (lit_days >= 0),
   CHECK (lottery_status IN ('pending', 'waiting_draw', 'drawn', 'won', 'not_won'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS grand_prize_draw_config (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  activity_code VARCHAR(64) NOT NULL UNIQUE,
+  draw_enabled TINYINT(1) NOT NULL DEFAULT 0,
+  draw_time VARCHAR(16) NOT NULL DEFAULT '2026-06-18 10:00',
+  winning_lottery_nos JSON NOT NULL,
+  configured_by VARCHAR(128) NULL,
+  remark VARCHAR(512) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_grand_prize_draw_config_activity FOREIGN KEY (activity_code) REFERENCES activity_config(activity_code),
+  CHECK (draw_enabled IN (0, 1))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS tracking_event (

@@ -60,7 +60,7 @@ class ApiHealthTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["database"]["connected"], True)
-        self.assertEqual(payload["database"]["table_count"], 17)
+        self.assertEqual(payload["database"]["table_count"], 18)
         self.assertEqual(payload["activity"]["activity_code"], "gaokao_lucky_sign_2026")
         self.assertEqual(payload["seed_counts"]["reward_count"], 7)
 
@@ -121,6 +121,9 @@ class ActivityApiFlowTests(unittest.TestCase):
             root_dir / "database" / "sqlite" / "003_optimize_activity_tables.sql",
             root_dir / "database" / "sqlite" / "004_allow_duplicate_reward_claims_per_draw.sql",
             root_dir / "database" / "sqlite" / "006_add_coupon_issue_config.sql",
+            root_dir / "database" / "sqlite" / "007_add_grand_prize_draw_config.sql",
+            root_dir / "database" / "sqlite" / "008_add_grand_prize_lottery_suffix.sql",
+            root_dir / "database" / "sqlite" / "009_add_grand_prize_draw_time.sql",
         ]
         conn = sqlite3.connect(self.database_path)
         try:
@@ -207,27 +210,32 @@ class ActivityApiFlowTests(unittest.TestCase):
 
         self.assertEqual(session["activity_code"], "gaokao_lucky_sign_2026")
         self.assertEqual(session["user"]["user_key"], "user_001")
-        self.assertEqual(session["daily_state"]["remaining_draw_count"], 1)
+        self.assertEqual(session["daily_state"]["remaining_draw_count"], 1000)
 
         response = self.client.get("/api/activity/state", params={"session_token": session["session_token"]})
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["daily_state"]["base_draw_chance"], 1)
-        self.assertEqual(payload["daily_state"]["remaining_draw_count"], 1)
+        self.assertEqual(payload["daily_state"]["base_draw_chance"], 1000)
+        self.assertEqual(payload["daily_state"]["remaining_draw_count"], 1000)
         self.assertEqual(payload["progress"]["lit_days"], 0)
         self.assertEqual(payload["progress"]["shared_count"], 0)
 
     def test_draw_execute_consumes_chance_and_creates_one_daily_checkin(self):
         session = self._create_session()
+        self._set_draw_chance(session["user"]["user_id"], 1)
 
         with patch("backend.app.activity_service.secrets.randbelow", return_value=0):
             draw = self._draw(session["session_token"])
 
         self.assertEqual(draw["success"], True)
-        self.assertEqual(draw["result"]["signType"], "未名鲤跃MIT池")
+        self.assertEqual(draw["result"]["signType"], "过儿签")
         self.assertEqual(draw["result"]["signLevel"], "上上签")
-        self.assertEqual(draw["result"]["mainTextColumns"], ["未名鲤跃MIT池"])
+        self.assertEqual(draw["result"]["fortuneHeadline"], "过儿签")
+        self.assertEqual(draw["result"]["fortuneHint"], "考试期间，不要叫我真名，叫我过儿。")
+        self.assertEqual(draw["result"]["mainTextColumns"], ["考试期间，不要叫我真名，叫我过儿。"])
+        self.assertEqual(draw["result"]["goodFor"], "")
+        self.assertEqual(draw["result"]["avoid"], "")
         self.assertEqual(draw["daily_state"]["remaining_draw_count"], 0)
         self.assertEqual(draw["checkin"]["checked_in_today"], True)
         self.assertEqual(draw["checkin"]["lit_days"], 1)
@@ -251,8 +259,18 @@ class ActivityApiFlowTests(unittest.TestCase):
             ["sign_001", "sign_002", "sign_003", "sign_004", "sign_005"],
         )
         self.assertEqual(
-            [draw["result"]["mainTextColumns"][0] for draw in draws],
-            ["未名鲤跃MIT池", "清华星链罩牛津", "复旦光阶通哈佛", "浙大鹰叼剑桥分", "上交船载斯坦福"],
+            [draw["result"]["fortuneHeadline"] for draw in draws],
+            ["过儿签", "范围签", "预习签", "磕头签", "粘锅签"],
+        )
+        self.assertEqual(
+            [draw["result"]["fortuneHint"] for draw in draws],
+            [
+                "考试期间，不要叫我真名，叫我过儿。",
+                "世界上最宽广的是什么？考试范围。",
+                "快要考试了，别人在复习，自己在预习。",
+                "给书磕个头，就当是复习过了吧。",
+                "想在这次考试咸鱼翻身的，没想到粘锅了。",
+            ],
         )
 
     def test_draw_randomly_assigns_coupon_and_claim_requires_that_coupon(self):
@@ -293,7 +311,7 @@ class ActivityApiFlowTests(unittest.TestCase):
         self.assertEqual(right_claim.status_code, 200)
         self.assertEqual(right_claim.json()["reward"]["reward_code"], "discount_75")
 
-    def test_currently_disabled_non_10_coupon_claim_does_not_save_success(self):
+    def test_enabled_non_10_coupon_claim_saves_success(self):
         import sqlite3
 
         session = self._create_session()
@@ -316,16 +334,30 @@ class ActivityApiFlowTests(unittest.TestCase):
         self.assertEqual(explain_response.status_code, 200)
         self.assertEqual(explain_response.json()["benefit"]["rewardCode"], "coupon_30")
         self.assertEqual(explain_response.json()["benefit"]["reward"]["imageUrl"], "/assets/p5/element_coupon_30yuan_card.png")
-        self.assertEqual(claim_response.status_code, 502)
-        self.assertEqual(self.hermes_client.issued_mobiles, [])
+        self.assertEqual(claim_response.status_code, 200)
+        self.assertEqual(claim_response.json()["reward"]["reward_code"], "coupon_30")
+        self.assertEqual(claim_response.json()["coupon_issue_status"], "issued")
+        self.assertEqual(claim_response.json()["external_coupon_id"], "2605250000000031")
+        self.assertEqual(self.hermes_client.issued_mobiles, ["13800138000"])
+
+        issue_config = self.hermes_client.issued_requests[-1]["issue_config"]
+        self.assertEqual(issue_config.reward_code, "coupon_30")
+        self.assertEqual(issue_config.hermes_id, 2605260000000010)
+        self.assertEqual(issue_config.ref_id, 2605260000000024)
+        self.assertEqual(issue_config.face_value, "30")
 
         conn = sqlite3.connect(self.database_path)
         try:
-            claim_count = conn.execute("SELECT COUNT(*) FROM reward_claim_record").fetchone()[0]
+            claim = conn.execute(
+                """
+                SELECT reward_code, claim_status, coupon_issue_status, external_coupon_id
+                FROM reward_claim_record
+                """
+            ).fetchone()
         finally:
             conn.close()
 
-        self.assertEqual(claim_count, 0)
+        self.assertEqual(claim, ("coupon_30", "success", "issued", "2605250000000031"))
 
     def test_draw_random_pool_rotates_all_five_configured_p5_coupon_assets(self):
         session = self._create_session()
@@ -416,7 +448,15 @@ class ActivityApiFlowTests(unittest.TestCase):
         self.assertEqual(randomize_response.json()["rewardCode"], "coupon_20")
         self.assertEqual(randomize_response.json()["reward"]["imageUrl"], "/assets/p5/element_coupon_20yuan_card.png")
         self.assertEqual(wrong_claim.status_code, 400)
-        self.assertEqual(right_claim.status_code, 502)
+        self.assertEqual(right_claim.status_code, 200)
+        self.assertEqual(right_claim.json()["reward"]["reward_code"], "coupon_20")
+        self.assertEqual(right_claim.json()["coupon_issue_status"], "issued")
+
+        issue_config = self.hermes_client.issued_requests[-1]["issue_config"]
+        self.assertEqual(issue_config.reward_code, "coupon_20")
+        self.assertEqual(issue_config.hermes_id, 2605250000000014)
+        self.assertEqual(issue_config.ref_id, 2605250000000028)
+        self.assertEqual(issue_config.face_value, "20")
 
     def test_benefit_randomize_ignores_exclude_and_returns_draw_coupon(self):
         session = self._create_session()
@@ -471,7 +511,14 @@ class ActivityApiFlowTests(unittest.TestCase):
         self.assertGreaterEqual(len(payload["thinkingProcess"]), 3)
         self.assertEqual(payload["ai"]["provider"], "fallback")
         self.assertEqual(payload["title"], "AI解签结果")
-        self.assertEqual(payload["explainLines"], ["北大锦鲤游进麻省理工实验室，理综题自动生成标准答案！"])
+        self.assertEqual(
+            payload["explainLines"],
+            [
+                "此签一出，主打一个“精神改名大法”。",
+                "名字先改成过儿，至于能不能过，先把气势拿捏住。",
+                "遇事不要慌，先给自己取个吉利名，生活问你准备好了吗，你说：别问，问就是正在加载中。",
+            ],
+        )
         self.assertEqual(payload["product"]["productName"], "和牛 · 锦绣前程板腱")
         self.assertEqual(payload["benefit"]["claimButtonText"], "领取专属福利")
 
@@ -550,7 +597,7 @@ class ActivityApiFlowTests(unittest.TestCase):
         self.assertTrue(results[0]["share_url"].startswith("/activity/home?share_token="))
         self.assertNotIn("page=p1", results[0]["share_url"])
         self.assertEqual(results[-1]["daily_state"]["share_reward_count_today"], 3)
-        self.assertEqual(results[-1]["daily_state"]["remaining_draw_count"], 4)
+        self.assertEqual(results[-1]["daily_state"]["remaining_draw_count"], 1003)
 
     def test_claimed_coupon_appears_in_reward_center_and_gift_is_last(self):
         session = self._create_session()
@@ -582,15 +629,16 @@ class ActivityApiFlowTests(unittest.TestCase):
         self.assertEqual([reward["reward_code"] for reward in rewards], ["coupon_10", "coupon_20", "coupon_30", "discount_9", "discount_75", "gift_985"])
         self.assertEqual(rewards[0]["reward_code"], "coupon_10")
         self.assertEqual(rewards[0]["status"], "unused")
-        self.assertEqual(rewards[0]["button_text"], "\u53bb\u9886\u53d6")
+        self.assertEqual(rewards[0]["button_text"], "\u53bb\u4f7f\u7528")
         self.assertEqual(rewards[1]["reward_code"], "coupon_20")
         self.assertEqual(rewards[1]["status"], "unclaimed")
-        self.assertEqual(rewards[1]["button_text"], "\u672a\u9886\u53d6")
+        self.assertEqual(rewards[1]["button_text"], "\u53bb\u9886\u53d6")
         self.assertEqual(rewards[-1]["reward_code"], "gift_985")
         self.assertEqual(rewards[-1]["button_text"], "未达标")
         self.assertEqual(reward_response.json()["draw_again_action"]["action"]["target"], "/activity/home")
         self.assertEqual(reward_response.json()["rules_action"]["action"]["target"], "/activity/rules")
-        self.assertEqual(rewards[-1]["action"]["target"], "/activity/grand-prize")
+        self.assertEqual(rewards[-1]["action"]["type"], "mini_program_product_detail")
+        self.assertEqual(rewards[-1]["action"]["target"], "/pages/product/detail?id=gift_985")
 
     def test_same_coupon_can_be_claimed_again_for_a_new_draw(self):
         session = self._create_session()
@@ -634,8 +682,80 @@ class ActivityApiFlowTests(unittest.TestCase):
         display_rewards = reward_response.json()["display_rewards"]
         self.assertEqual([reward["reward_code"] for reward in display_rewards], ["coupon_10", "coupon_20", "coupon_30", "discount_9", "discount_75", "gift_985"])
         self.assertEqual(sum(1 for reward in display_rewards if reward["reward_code"] == "coupon_10"), 1)
-        self.assertEqual(display_rewards[0]["button_text"], "\u53bb\u9886\u53d6")
-        self.assertEqual(display_rewards[1]["button_text"], "\u672a\u9886\u53d6")
+        self.assertEqual(display_rewards[0]["button_text"], "\u53bb\u4f7f\u7528")
+        self.assertEqual(display_rewards[1]["button_text"], "\u53bb\u9886\u53d6")
+
+    def test_same_mobile_can_receive_same_coupon_again_for_new_draw(self):
+        session = self._create_session()
+        first_draw = self._draw_with_reward(session["session_token"], "discount_75")
+        first_claim = self.client.post(
+            "/api/benefit/claim",
+            json={
+                "session_token": session["session_token"],
+                "draw_id": first_draw["draw_id"],
+                "reward_code": "discount_75",
+                "mobile": "13800138000",
+            },
+        )
+        second_draw = self._draw_with_reward(session["session_token"], "discount_75")
+
+        second_claim = self.client.post(
+            "/api/benefit/claim",
+            json={
+                "session_token": session["session_token"],
+                "draw_id": second_draw["draw_id"],
+                "reward_code": "discount_75",
+                "mobile": "13800138000",
+            },
+        )
+
+        self.assertEqual(first_claim.status_code, 200)
+        self.assertEqual(second_claim.status_code, 200)
+        self.assertNotEqual(first_claim.json()["claim_no"], second_claim.json()["claim_no"])
+        self.assertEqual(
+            [first_claim.json()["reward"]["reward_code"], second_claim.json()["reward"]["reward_code"]],
+            ["discount_75", "discount_75"],
+        )
+        self.assertEqual(self.hermes_client.issued_mobiles, ["13800138000", "13800138000"])
+
+    def test_reward_center_uses_latest_issued_claim_identity_for_coupon_action(self):
+        session = self._create_session()
+
+        first_draw = self._draw_with_reward(session["session_token"], "coupon_20")
+        first_claim = self.client.post(
+            "/api/benefit/claim",
+            json={
+                "session_token": session["session_token"],
+                "draw_id": first_draw["draw_id"],
+                "reward_code": "coupon_20",
+                "mobile": "13800138000",
+            },
+        ).json()
+        second_draw = self._draw_with_reward(session["session_token"], "coupon_20")
+        second_claim = self.client.post(
+            "/api/benefit/claim",
+            json={
+                "session_token": session["session_token"],
+                "draw_id": second_draw["draw_id"],
+                "reward_code": "coupon_20",
+                "mobile": "13900139000",
+            },
+        ).json()
+
+        reward_response = self.client.get("/api/reward/center/detail", params={"session_token": session["session_token"]})
+
+        self.assertEqual(first_claim["reward"]["reward_code"], "coupon_20")
+        self.assertEqual(second_claim["reward"]["reward_code"], "coupon_20")
+        self.assertEqual(reward_response.status_code, 200)
+
+        coupon_20 = next(
+            reward
+            for reward in reward_response.json()["display_rewards"]
+            if reward["reward_code"] == "coupon_20"
+        )
+        self.assertEqual(coupon_20["reward_id"], f"coupon_20_{second_claim['claim_no']}")
+        self.assertIn(f"claim_token={second_claim['claim_token']}", coupon_20["action"]["target"])
+        self.assertIn(f"claim_no={second_claim['claim_no']}", coupon_20["action"]["target"])
 
     def test_claim_benefit_requires_valid_mobile_and_persists_claim_identity(self):
         import sqlite3
@@ -734,6 +854,61 @@ class ActivityApiFlowTests(unittest.TestCase):
         self.assertEqual(issue_config.reward_code, "coupon_10")
         self.assertEqual(issue_config.face_value, "10")
         self.assertEqual(issue_config.hermes_title, "一举高中·无门槛10元优惠券")
+
+    def test_claim_benefit_uses_configured_hermes_issue_payload_for_other_coupon_tiers(self):
+        expected_configs = {
+            "coupon_20": {
+                "hermes_title": "一举高中·无门槛20元优惠券",
+                "hermes_id": 2605250000000014,
+                "ref_id": 2605250000000028,
+                "face_value": "20",
+            },
+            "coupon_30": {
+                "hermes_title": "一举高中·无门槛30元优惠券",
+                "hermes_id": 2605260000000010,
+                "ref_id": 2605260000000024,
+                "face_value": "30",
+            },
+            "discount_9": {
+                "hermes_title": "一举高中·无门槛9折优惠券",
+                "hermes_id": 2605260000000025,
+                "ref_id": 2605260000000039,
+                "face_value": "9",
+            },
+            "discount_75": {
+                "hermes_title": "一举高中·7.5折优惠券",
+                "hermes_id": 2605260000000040,
+                "ref_id": 2605260000000055,
+                "face_value": "7.5",
+            },
+        }
+
+        for index, (reward_code, expected) in enumerate(expected_configs.items()):
+            session = self._create_session(f"coupon_issue_{reward_code}")
+            draw = self._draw_with_reward(session["session_token"], reward_code)
+            response = self.client.post(
+                "/api/benefit/claim",
+                json={
+                    "session_token": session["session_token"],
+                    "draw_id": draw["draw_id"],
+                    "reward_code": reward_code,
+                    "mobile": f"13800138{index:03d}",
+                },
+            )
+
+            self.assertEqual(response.status_code, 200, response.text)
+
+        issued_configs = [request["issue_config"] for request in self.hermes_client.issued_requests[-4:]]
+
+        for issue_config in issued_configs:
+            expected = expected_configs[issue_config.reward_code]
+            self.assertEqual(issue_config.hermes_title, expected["hermes_title"])
+            self.assertEqual(issue_config.hermes_id, expected["hermes_id"])
+            self.assertEqual(issue_config.ref_id, expected["ref_id"])
+            self.assertEqual(issue_config.ref_type, 1)
+            self.assertEqual(issue_config.start_time, "2026-05-27 00:00:00")
+            self.assertEqual(issue_config.end_time, "2026-06-30 23:59:59")
+            self.assertEqual(issue_config.face_value, expected["face_value"])
 
     def test_existing_issued_claim_returns_without_requiring_current_issue_config(self):
         import sqlite3
@@ -938,10 +1113,322 @@ class ActivityApiFlowTests(unittest.TestCase):
         payload = response.json()
         self.assertEqual(payload["shared_count"], 5)
         self.assertEqual(payload["qualify_status"], "qualified")
-        self.assertEqual(payload["button_text"], "去使用")
+        self.assertEqual(payload["button_text"], "去查看")
+        self.assertEqual(payload["action"]["type"], "mini_program_product_detail")
+        self.assertEqual(payload["action"]["target"], "/pages/product/detail?id=gift_985")
         self.assertTrue(payload["lottery_no"].startswith("GP"))
+        self.assertEqual(payload["qualification"]["lottery_no"], payload["lottery_no"])
+        self.assertEqual(payload["lottery_status"]["draw_time_desc"], "2026-06-18 10:00")
         self.assertEqual(reward_response.status_code, 200)
-        self.assertEqual(reward_response.json()["display_rewards"][-1]["button_text"], "去使用")
+        self.assertEqual(reward_response.json()["display_rewards"][-1]["button_text"], "去查看")
+        self.assertEqual(reward_response.json()["display_rewards"][-1]["action"]["type"], "mini_program_product_detail")
+        self.assertEqual(reward_response.json()["display_rewards"][-1]["action"]["target"], "/pages/product/detail?id=gift_985")
+
+    def test_grand_prize_lottery_number_is_generated_after_qualification_with_random_suffix(self):
+        owner = self._create_session("random_lottery_owner")
+        share = self.client.post("/api/share/record", json={"session_token": owner["session_token"], "share_channel": "wechat"}).json()
+
+        before = self.client.get("/api/grand-prize/qualification/detail", params={"session_token": owner["session_token"]}).json()
+
+        self.assertEqual(before["qualify_status"], "not_qualified")
+        self.assertEqual(before["lottery_no"], "")
+
+        with patch("backend.app.activity_service.secrets.randbelow", side_effect=[0, 0, 0, 0, 0, 554321]):
+            for index in range(5):
+                friend = self._create_session(f"random_lottery_friend_{index}", share["share_token"])
+                self._draw(friend["session_token"])
+
+        after = self.client.get("/api/grand-prize/qualification/detail", params={"session_token": owner["session_token"]}).json()
+        suffix = after["lottery_no"][-6:]
+
+        self.assertEqual(after["qualify_status"], "qualified")
+        self.assertRegex(after["lottery_no"], r"^GP\d{14}$")
+        self.assertEqual(suffix, "654321")
+        self.assertNotEqual(suffix, f"{owner['user']['user_id']:06d}")
+        self.assertNotEqual(suffix[:4], "0000")
+
+    def test_grand_prize_draw_result_is_bound_to_current_users_lottery_number(self):
+        winner = self._create_session("grand_prize_winner")
+        loser = self._create_session("grand_prize_loser")
+
+        for owner, prefix in ((winner, "winner_friend"), (loser, "loser_friend")):
+            share = self.client.post("/api/share/record", json={"session_token": owner["session_token"], "share_channel": "wechat"}).json()
+            for index in range(5):
+                friend = self._create_session(f"{prefix}_{index}", share["share_token"])
+                self._draw(friend["session_token"])
+
+        winner_before = self.client.get("/api/grand-prize/qualification/detail", params={"session_token": winner["session_token"]}).json()
+        loser_before = self.client.get("/api/grand-prize/qualification/detail", params={"session_token": loser["session_token"]}).json()
+        winner_lottery_no = winner_before["lottery_no"]
+        loser_lottery_no = loser_before["lottery_no"]
+
+        self.assertNotEqual(winner_lottery_no, loser_lottery_no)
+
+        import sqlite3
+
+        conn = sqlite3.connect(self.database_path)
+        try:
+            conn.execute(
+                "UPDATE grand_prize_qualification SET lottery_status = 'won' WHERE lottery_no = ?",
+                (winner_lottery_no,),
+            )
+            conn.execute(
+                "UPDATE grand_prize_qualification SET lottery_status = 'not_won' WHERE lottery_no = ?",
+                (loser_lottery_no,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        winner_response = self.client.get("/api/grand-prize/qualification/detail", params={"session_token": winner["session_token"]})
+        loser_response = self.client.get("/api/grand-prize/qualification/detail", params={"session_token": loser["session_token"]})
+
+        self.assertEqual(winner_response.status_code, 200)
+        self.assertEqual(loser_response.status_code, 200)
+
+        winner_payload = winner_response.json()
+        loser_payload = loser_response.json()
+
+        self.assertEqual(winner_payload["lottery_status"]["status"], "won")
+        self.assertEqual(winner_payload["lottery_status"]["status_text"], "已开奖")
+        self.assertTrue(winner_payload["lottery_status"]["is_drawn"])
+        self.assertTrue(winner_payload["lottery_status"]["is_winner"])
+        self.assertIn(winner_lottery_no, winner_payload["lottery_status"]["publicity_desc"])
+        self.assertIn("中奖", winner_payload["lottery_status"]["publicity_desc"])
+
+        self.assertEqual(loser_payload["lottery_status"]["status"], "not_won")
+        self.assertEqual(loser_payload["lottery_status"]["status_text"], "已开奖")
+        self.assertTrue(loser_payload["lottery_status"]["is_drawn"])
+        self.assertFalse(loser_payload["lottery_status"]["is_winner"])
+        self.assertIn(loser_lottery_no, loser_payload["lottery_status"]["publicity_desc"])
+        self.assertIn("未中奖", loser_payload["lottery_status"]["publicity_desc"])
+        self.assertNotIn(winner_lottery_no, loser_payload["lottery_status"]["publicity_desc"])
+
+    def test_admin_grand_prize_draw_config_publishes_winner_by_lottery_number(self):
+        winner = self._create_session("configured_grand_prize_winner")
+        loser = self._create_session("configured_grand_prize_loser")
+
+        for owner, prefix in ((winner, "configured_winner_friend"), (loser, "configured_loser_friend")):
+            share = self.client.post("/api/share/record", json={"session_token": owner["session_token"], "share_channel": "wechat"}).json()
+            for index in range(5):
+                friend = self._create_session(f"{prefix}_{index}", share["share_token"])
+                self._draw(friend["session_token"])
+
+        winner_before = self.client.get("/api/grand-prize/qualification/detail", params={"session_token": winner["session_token"]}).json()
+        loser_before = self.client.get("/api/grand-prize/qualification/detail", params={"session_token": loser["session_token"]}).json()
+        winner_lottery_no = winner_before["lottery_no"]
+        loser_lottery_no = loser_before["lottery_no"]
+
+        config_response = self.client.post(
+            "/api/admin/grand-prize/draw-config",
+            json={
+                "draw_enabled": True,
+                "winning_lottery_nos": [winner_lottery_no],
+                "configured_by": "unit_test",
+            },
+        )
+
+        self.assertEqual(config_response.status_code, 200, config_response.text)
+        config_payload = config_response.json()
+        self.assertTrue(config_payload["draw_enabled"])
+        self.assertEqual(config_payload["winning_lottery_nos"], [winner_lottery_no])
+        self.assertEqual(config_payload["qualified_count"], 2)
+        self.assertEqual(config_payload["winner_count"], 1)
+        self.assertEqual(config_payload["not_winner_count"], 1)
+        self.assertEqual(config_payload["unknown_lottery_nos"], [])
+
+        winner_after = self.client.get("/api/grand-prize/qualification/detail", params={"session_token": winner["session_token"]}).json()
+        loser_after = self.client.get("/api/grand-prize/qualification/detail", params={"session_token": loser["session_token"]}).json()
+
+        self.assertEqual(winner_after["lottery_status"]["status"], "won")
+        self.assertTrue(winner_after["lottery_status"]["is_drawn"])
+        self.assertTrue(winner_after["lottery_status"]["is_winner"])
+        self.assertIn(winner_lottery_no, winner_after["lottery_status"]["publicity_desc"])
+
+        self.assertEqual(loser_after["lottery_status"]["status"], "not_won")
+        self.assertTrue(loser_after["lottery_status"]["is_drawn"])
+        self.assertFalse(loser_after["lottery_status"]["is_winner"])
+        self.assertIn(loser_lottery_no, loser_after["lottery_status"]["publicity_desc"])
+        self.assertNotIn(winner_lottery_no, loser_after["lottery_status"]["publicity_desc"])
+
+    def test_admin_grand_prize_draw_config_can_hide_results_until_enabled(self):
+        owner = self._create_session("configured_grand_prize_pending")
+        share = self.client.post("/api/share/record", json={"session_token": owner["session_token"], "share_channel": "wechat"}).json()
+        for index in range(5):
+            friend = self._create_session(f"configured_pending_friend_{index}", share["share_token"])
+            self._draw(friend["session_token"])
+
+        before = self.client.get("/api/grand-prize/qualification/detail", params={"session_token": owner["session_token"]}).json()
+        lottery_no = before["lottery_no"]
+        self.assertEqual(before["lottery_status"]["status"], "pending")
+
+        response = self.client.post(
+            "/api/admin/grand-prize/draw-config",
+            json={
+                "draw_enabled": False,
+                "winning_lottery_nos": [lottery_no],
+                "configured_by": "unit_test",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        payload = response.json()
+        self.assertFalse(payload["draw_enabled"])
+        self.assertEqual(payload["winning_lottery_nos"], [lottery_no])
+
+        after = self.client.get("/api/grand-prize/qualification/detail", params={"session_token": owner["session_token"]}).json()
+
+        self.assertEqual(after["lottery_status"]["status"], "pending")
+        self.assertFalse(after["lottery_status"]["is_drawn"])
+        self.assertFalse(after["lottery_status"]["is_winner"])
+
+    def test_admin_grand_prize_draw_config_sets_draw_time_for_detail(self):
+        owner = self._create_session("configured_grand_prize_draw_time")
+        share = self.client.post("/api/share/record", json={"session_token": owner["session_token"], "share_channel": "wechat"}).json()
+        for index in range(5):
+            friend = self._create_session(f"configured_draw_time_friend_{index}", share["share_token"])
+            self._draw(friend["session_token"])
+
+        lottery_no = self.client.get(
+            "/api/grand-prize/qualification/detail",
+            params={"session_token": owner["session_token"]},
+        ).json()["lottery_no"]
+
+        response = self.client.post(
+            "/api/admin/grand-prize/draw-config",
+            json={
+                "draw_enabled": False,
+                "winning_lottery_nos": [lottery_no],
+                "draw_time": "2026-06-18 10:00",
+                "configured_by": "unit_test",
+            },
+        )
+        detail = self.client.get("/api/grand-prize/qualification/detail", params={"session_token": owner["session_token"]})
+        config = self.client.get("/api/admin/grand-prize/draw-config")
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["draw_time"], "2026-06-18 10:00")
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.json()["lottery_status"]["draw_time_desc"], "2026-06-18 10:00")
+        self.assertEqual(config.status_code, 200)
+        self.assertEqual(config.json()["draw_time"], "2026-06-18 10:00")
+
+    def test_grand_prize_draw_config_auto_publishes_after_draw_time(self):
+        winner = self._create_session("scheduled_grand_prize_winner")
+        loser = self._create_session("scheduled_grand_prize_loser")
+
+        for owner, prefix in ((winner, "scheduled_winner_friend"), (loser, "scheduled_loser_friend")):
+            share = self.client.post("/api/share/record", json={"session_token": owner["session_token"], "share_channel": "wechat"}).json()
+            for index in range(5):
+                friend = self._create_session(f"{prefix}_{index}", share["share_token"])
+                self._draw(friend["session_token"])
+
+        winner_before = self.client.get("/api/grand-prize/qualification/detail", params={"session_token": winner["session_token"]}).json()
+        loser_before = self.client.get("/api/grand-prize/qualification/detail", params={"session_token": loser["session_token"]}).json()
+        winner_lottery_no = winner_before["lottery_no"]
+        loser_lottery_no = loser_before["lottery_no"]
+
+        response = self.client.post(
+            "/api/admin/grand-prize/draw-config",
+            json={
+                "draw_enabled": False,
+                "draw_time": "2020-01-01 10:00",
+                "winning_lottery_nos": [winner_lottery_no],
+                "configured_by": "unit_test",
+            },
+        )
+        winner_after = self.client.get("/api/grand-prize/qualification/detail", params={"session_token": winner["session_token"]}).json()
+
+        import sqlite3
+
+        conn = sqlite3.connect(self.database_path)
+        try:
+            winner_db_status = conn.execute(
+                "SELECT lottery_status FROM grand_prize_qualification WHERE lottery_no = ?",
+                (winner_lottery_no,),
+            ).fetchone()[0]
+            loser_db_status = conn.execute(
+                "SELECT lottery_status FROM grand_prize_qualification WHERE lottery_no = ?",
+                (loser_lottery_no,),
+            ).fetchone()[0]
+        finally:
+            conn.close()
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertFalse(response.json()["draw_enabled"])
+        self.assertEqual(winner_after["lottery_status"]["status"], "won")
+        self.assertTrue(winner_after["lottery_status"]["is_drawn"])
+        self.assertTrue(winner_after["lottery_status"]["is_winner"])
+        self.assertEqual(winner_db_status, "won")
+        self.assertEqual(loser_db_status, "not_won")
+
+    def test_grand_prize_detail_backfills_blank_lottery_no_for_existing_qualification(self):
+        owner = self._create_session("owner_blank_lottery")
+        share = self.client.post("/api/share/record", json={"session_token": owner["session_token"], "share_channel": "wechat"}).json()
+
+        for index in range(5):
+            friend = self._create_session(f"blank_lottery_friend_{index}", share["share_token"])
+            self._draw(friend["session_token"])
+
+        import sqlite3
+
+        conn = sqlite3.connect(self.database_path)
+        try:
+            conn.execute(
+                """
+                UPDATE grand_prize_qualification
+                SET lottery_no = ''
+                WHERE activity_code = 'gaokao_lucky_sign_2026' AND user_id = ?
+                """,
+                (owner["user"]["user_id"],),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        response = self.client.get("/api/grand-prize/qualification/detail", params={"session_token": owner["session_token"]})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["qualify_status"], "qualified")
+        self.assertTrue(payload["lottery_no"].startswith("GP"))
+        self.assertEqual(payload["qualification"]["lottery_no"], payload["lottery_no"])
+
+    def test_grand_prize_detail_reissues_predictable_legacy_lottery_number(self):
+        owner = self._create_session("owner_predictable_lottery")
+        share = self.client.post("/api/share/record", json={"session_token": owner["session_token"], "share_channel": "wechat"}).json()
+
+        for index in range(5):
+            friend = self._create_session(f"predictable_lottery_friend_{index}", share["share_token"])
+            self._draw(friend["session_token"])
+
+        legacy_lottery_no = f"GP20260526{owner['user']['user_id']:06d}"
+
+        import sqlite3
+
+        conn = sqlite3.connect(self.database_path)
+        try:
+            conn.execute(
+                """
+                UPDATE grand_prize_qualification
+                SET lottery_no = ?,
+                    lottery_suffix = ?
+                WHERE activity_code = 'gaokao_lucky_sign_2026' AND user_id = ?
+                """,
+                (legacy_lottery_no, f"{owner['user']['user_id']:06d}", owner["user"]["user_id"]),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        with patch("backend.app.activity_service.secrets.randbelow", return_value=234567):
+            response = self.client.get("/api/grand-prize/qualification/detail", params={"session_token": owner["session_token"]})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertNotEqual(payload["lottery_no"], legacy_lottery_no)
+        self.assertEqual(payload["lottery_no"][-6:], "334567")
+        self.assertNotEqual(payload["lottery_no"][-6:], f"{owner['user']['user_id']:06d}")
 
     def test_rules_explain_and_tracking_endpoints_return_flow_data(self):
         session = self._create_session()

@@ -35,7 +35,7 @@ class ActivityRepository:
             "asset_count": "SELECT COUNT(*) AS count FROM activity_asset_config WHERE activity_code = ?",
             "product_count": "SELECT COUNT(*) AS count FROM product_recommend_config WHERE activity_code = ?",
             "reward_count": "SELECT COUNT(*) AS count FROM reward_config WHERE activity_code = ?",
-            "draw_result_count": "SELECT COUNT(*) AS count FROM draw_result_config WHERE activity_code = ?",
+            "draw_result_count": "SELECT COUNT(*) AS count FROM draw_result_config WHERE activity_code = ? AND status = 'enabled'",
         }
         counts: dict[str, int] = {}
         for key, sql in queries.items():

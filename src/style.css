@@ -18,7 +18,7 @@
   --safe-left: env(safe-area-inset-left, 0px);
   font: 16px/1.45 "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
   color: var(--ink);
-  background: #210402;
+  background: #230201;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -32,8 +32,10 @@
 html,
 body {
   min-width: 320px;
+  min-height: 100%;
   margin: 0;
   overflow-x: hidden;
+  background: #230201;
 }
 
 button {
@@ -44,6 +46,7 @@ button {
 
 #app {
   min-height: 100svh;
+  background: #230201;
 }
 
 .home-page,
@@ -86,7 +89,6 @@ button {
 .p5-use-tip,
 .p6-reward-action,
 .p6-action-tip,
-.p8-lottery-no,
 .p8-status-value,
 .p8-draw-time,
 .p8-status-lottery-no {
@@ -132,61 +134,17 @@ button {
   box-shadow: 0 0 42px rgba(0, 0, 0, 0.5);
 }
 
-.home-brand-wordmark {
+.home-brand-logo {
   position: absolute;
   z-index: 4;
   top: 3.4%;
   left: 5.1%;
-  width: 18.5%;
-  padding: 0;
-  border: 0;
-  color: #fff;
-  background: transparent;
-  text-shadow: 0 1px 3px rgba(62, 0, 0, 0.42);
+  display: block;
+  width: 23%;
+  height: auto;
+  object-fit: contain;
   pointer-events: none;
-}
-
-.home-brand-wordmark-year,
-.home-brand-wordmark-main,
-.home-brand-wordmark-sub {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  color: #fff;
-  line-height: 1;
-  letter-spacing: 0;
-  text-align: center;
-  white-space: nowrap;
-}
-
-.home-brand-wordmark-year {
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(8px, 2.4vw, 11px);
-  letter-spacing: 0.12em;
-}
-
-.home-brand-wordmark-main {
-  font-family: Georgia, "Times New Roman", serif;
-  color: #fff;
-  font-size: clamp(20px, 5.4vw, 24px);
-  font-style: italic;
-  font-weight: 700;
-  line-height: 0.86;
-  transform: scaleX(1.04);
-  transform-origin: center;
-}
-
-.home-brand-wordmark-main span {
-  display: block;
-}
-
-.home-brand-wordmark-sub {
-  margin-top: 4px;
-  font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif;
-  font-size: clamp(8px, 2.4vw, 11px);
-  font-weight: 800;
-  color: #fff;
-  letter-spacing: 0.04em;
+  filter: drop-shadow(0 2px 4px rgba(76, 0, 0, 0.28));
 }
 
 .rule-entry {
@@ -219,48 +177,56 @@ button {
 .home-barrage {
   position: absolute;
   z-index: 3;
-  top: 28.2%;
-  left: 0;
-  width: 100%;
-  height: 12.8%;
+  top: 32.2%;
+  left: 50%;
+  width: 80%;
+  height: 9.6%;
   overflow: hidden;
   pointer-events: none;
+  transform: translateX(-50%);
 }
 
 .home-barrage-item {
-  position: absolute;
-  top: var(--barrage-row);
-  left: -86%;
-  display: inline-block;
-  min-width: max-content;
+  position: static;
+  flex: 0 0 var(--barrage-item-height);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
   color: #f8d982;
-  font-size: clamp(10px, 2.35vw, 11.5px);
+  font-size: clamp(9.5px, 2.2vw, 11px);
   font-weight: 800;
   line-height: 1.15;
   letter-spacing: 0;
+  text-align: center;
   white-space: nowrap;
   text-shadow:
     0 1px 2px rgba(74, 17, 0, 0.52),
     0 0 8px rgba(255, 219, 126, 0.34);
+}
+
+.home-barrage-text {
+  display: block;
+  width: 100%;
+  text-align: center;
+}
+
+.home-barrage-track {
+  height: var(--barrage-track-height);
+  display: flex;
+  flex-direction: column;
   animation: home-barrage-scroll var(--barrage-duration) linear infinite;
-  animation-delay: var(--barrage-delay);
-  will-change: left, opacity;
+  will-change: transform;
 }
 
 @keyframes home-barrage-scroll {
   0% {
-    left: -86%;
-    opacity: 0;
-  }
-
-  8%,
-  88% {
-    opacity: 1;
+    transform: translateY(0);
   }
 
   100% {
-    left: 106%;
-    opacity: 0;
+    transform: translateY(-50%);
   }
 }
 
@@ -646,7 +612,8 @@ button {
 .p2-back-button,
 .p4-back-button,
 .p6-back-button,
-.p7-back-button {
+.p7-back-button,
+.p8-back-button {
   position: absolute;
   z-index: 6;
   top: 2.2%;
@@ -666,7 +633,8 @@ button {
 
 .p2-back-button::before,
 .p4-back-button::before,
-.p6-back-button::before {
+.p6-back-button::before,
+.p8-back-button::before {
   content: "";
   position: absolute;
   top: 50%;
@@ -681,7 +649,8 @@ button {
 
 .p2-back-button::after,
 .p4-back-button::after,
-.p6-back-button::after {
+.p6-back-button::after,
+.p8-back-button::after {
   content: "";
   position: absolute;
   inset: 14%;
@@ -1430,7 +1399,7 @@ button {
 
 .p2-ai-result {
   max-height: 178px;
-  overflow-y: auto;
+  overflow: hidden;
   padding: 0 2px;
 }
 
@@ -1499,7 +1468,9 @@ button {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  background: #8c0300;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(206, 41, 22, 0.32), transparent 42%),
+    #230201;
 }
 
 .p2-stage {
@@ -1537,28 +1508,18 @@ button {
   box-shadow: none;
 }
 
-.p2-title-sign {
-  position: absolute;
-  z-index: 2;
-  top: 7.9%;
-  left: 50%;
-  width: 56%;
-  display: block;
-  transform: translateX(-50%);
-  filter: drop-shadow(0 6px 8px rgba(70, 0, 0, 0.16));
-}
-
 .p2-fortune-copy {
   position: absolute;
   z-index: 3;
-  top: 17%;
+  top: 10.2%;
   left: 50%;
-  width: 64%;
+  width: 100%;
   margin: 0;
   color: #5c2518;
   font-family: "STKaiti", "KaiTi", "Kaiti SC", "Songti SC", serif;
   text-align: center;
   transform: translateX(-50%);
+  pointer-events: none;
 }
 
 .p2-fortune-copy h2,
@@ -1568,54 +1529,65 @@ button {
 }
 
 .p2-fortune-copy h2 {
-  display: inline-block;
+  display: grid;
+  place-items: center;
+  width: 34%;
+  min-height: 54px;
+  margin: 0 auto;
   color: #542414;
   font-family: "STXingkai", "华文行楷", "FZKai-Z03S", "KaiTi", "STKaiti", serif;
-  font-size: clamp(41px, 11.2vw, 54px);
+  font-size: clamp(24px, 6.2vw, 31px);
   font-weight: 900;
-  line-height: 1.02;
+  line-height: 1;
   text-shadow:
     0 2px 0 rgba(255, 236, 196, 0.78),
     0 7px 10px rgba(76, 17, 4, 0.16);
-  transform: skewX(-8deg) rotate(-1.5deg) scaleX(0.82);
+  transform: none;
   transform-origin: 50% 58%;
   white-space: nowrap;
 }
 
 .p2-fortune-copy p {
   position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin-top: 12px;
-  color: #9a5d2d;
-  font-size: clamp(12px, 3.25vw, 15px);
-  font-weight: 600;
-  line-height: 1.25;
-  white-space: nowrap;
+  display: block;
+  max-width: 76%;
+  margin: 1.7% auto 0;
+  color: #6b2a18;
+  font-size: clamp(25px, 7.4vw, 34px);
+  font-weight: 800;
+  line-height: 1.34;
+  white-space: normal;
+  text-shadow: 0 1px 0 rgba(255, 239, 204, 0.72);
+}
+
+.p2-fortune-line {
+  display: block;
+}
+
+.p2-fortune-emphasis {
+  color: #b42418;
 }
 
 .p2-fortune-copy p::before,
 .p2-fortune-copy p::after {
   content: "";
-  width: 24px;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(172, 103, 44, 0.74));
+  display: none;
 }
 
 .p2-fortune-copy p::after {
-  background: linear-gradient(90deg, rgba(172, 103, 44, 0.74), transparent);
+  background: none;
 }
 
 .p2-result-body {
   position: absolute;
   z-index: 2;
-  top: 17.9%;
+  top: 74.2%;
   left: 0;
   width: 100%;
-  height: 41.6%;
+  height: 15.6%;
   display: block;
   min-height: 0;
+  pointer-events: none;
 }
 
 .p2-side-text {
@@ -1647,11 +1619,6 @@ button {
   height: 100%;
   object-fit: contain;
   filter: drop-shadow(0 7px 7px rgba(99, 10, 0, 0.13));
-}
-
-.p2-side-copy,
-.p2-ai-panel {
-  font-family: "STKaiti", "KaiTi", "Kaiti SC", "Songti SC", serif;
 }
 
 .p2-side-copy {
@@ -1715,13 +1682,13 @@ button {
 .p2-product-hero {
   position: absolute;
   z-index: 2;
-  top: 29.4%;
-  left: 50%;
-  width: 48%;
-  height: 48%;
+  top: 17%;
+  left: 29%;
+  width: 22%;
+  height: 58%;
   min-width: 0;
   padding: 0;
-  perspective: 560px;
+  perspective: none;
   transform: translateX(-50%);
 }
 
@@ -1729,14 +1696,14 @@ button {
   content: "";
   position: absolute;
   z-index: 0;
-  right: 8%;
-  bottom: 7%;
+  right: 12%;
+  bottom: 8%;
   left: 13%;
-  height: 18%;
+  height: 16%;
   border-radius: 50%;
-  background: radial-gradient(ellipse, rgba(74, 18, 0, 0.38) 0 34%, rgba(74, 18, 0, 0.16) 52%, transparent 74%);
-  filter: blur(7px);
-  transform: rotate(-10deg);
+  background: radial-gradient(ellipse, rgba(74, 18, 0, 0.26) 0 34%, rgba(74, 18, 0, 0.12) 52%, transparent 74%);
+  filter: blur(6px);
+  transform: rotate(-5deg);
 }
 
 .p2-product-hero img {
@@ -1747,10 +1714,10 @@ button {
   height: 100%;
   object-fit: contain;
   filter:
-    drop-shadow(0 26px 20px rgba(82, 5, 0, 0.36))
-    drop-shadow(-8px 10px 9px rgba(82, 5, 0, 0.14))
+    drop-shadow(0 14px 13px rgba(82, 5, 0, 0.2))
+    drop-shadow(-5px 7px 7px rgba(82, 5, 0, 0.1))
     drop-shadow(0 4px 3px rgba(255, 239, 211, 0.16));
-  transform: rotate(-10deg) scale(1.01);
+  transform: rotate(-4deg) scale(0.92);
   transform-origin: 52% 58%;
 }
 
@@ -1769,15 +1736,16 @@ button {
 .p2-ai-panel {
   position: absolute;
   z-index: 3;
-  top: 56.4%;
+  top: 36.5%;
   left: 50%;
-  width: 66%;
+  width: 76%;
   margin: 0;
   padding: 0;
   border: 0;
   border-radius: 0;
   color: #5b2418;
   background: transparent;
+  font-family: "STKaiti", "KaiTi", "Kaiti SC", "Songti SC", serif;
   transform: translateX(-50%);
 }
 
@@ -1790,7 +1758,7 @@ button {
   position: relative;
   z-index: 2;
   display: block;
-  width: 80%;
+  width: 72%;
   margin: 0 auto;
   padding: 0;
   border: 0;
@@ -1806,9 +1774,9 @@ button {
 }
 
 .p2-scroll-body {
-  width: 92%;
+  width: 94%;
   max-height: 0;
-  margin: -18.8% auto 0;
+  margin: -16.5% auto 0;
   padding: 0 32px;
   overflow: hidden;
   opacity: 0;
@@ -1824,9 +1792,9 @@ button {
 }
 
 .p2-ai-scroll.is-open .p2-scroll-body {
-  min-height: 220px;
-  max-height: 252px;
-  padding: 34px 30px 48px;
+  min-height: 252px;
+  max-height: 292px;
+  padding: 42px 30px 46px;
   opacity: 1;
   transform: scaleY(1);
 }
@@ -1842,9 +1810,14 @@ button {
 }
 
 .p2-ai-result {
-  max-height: 170px;
-  overflow-y: auto;
+  max-height: 200px;
+  overflow: hidden;
   padding: 1px 4px 0;
+}
+
+.p2-ai-result p {
+  font-size: clamp(14px, 3.45vw, 16px);
+  line-height: 1.5;
 }
 
 .p2-ai-result p + p {
@@ -1912,10 +1885,10 @@ button {
   position: absolute;
   z-index: 4;
   right: auto;
-  bottom: 4.2%;
+  bottom: 3.4%;
   left: 50%;
   display: block;
-  width: 60%;
+  width: 56%;
   min-height: 0;
   margin: 0;
   padding: 0;
@@ -1936,24 +1909,33 @@ button {
 
 .p2-poster-button {
   position: absolute;
-  z-index: 5;
-  bottom: 14.2%;
+  z-index: 7;
+  top: 67.9%;
+  bottom: auto;
   left: 50%;
-  width: 40%;
-  min-height: 32px;
-  padding: 0 0 7px;
+  width: 24%;
+  min-height: 20px;
+  padding: 0 0 3px;
   border: 0;
-  border-bottom: 2px solid #d8b25f;
-  color: #ffe9a9;
+  border-bottom: 2px solid #a51d13;
+  color: #a51d13;
   background: transparent;
-  font-size: 18px;
+  font-size: clamp(13px, 3.5vw, 15px);
   font-weight: 900;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
+  line-height: 1.1;
   white-space: nowrap;
   cursor: pointer;
   transform: translateX(-50%);
-  text-shadow: 0 2px 4px rgba(86, 0, 0, 0.46);
+  text-shadow: 0 1px 0 rgba(255, 238, 196, 0.82);
   box-shadow: none;
+}
+
+.p2-poster-button.is-explain-open {
+  top: 67.9%;
+  bottom: auto;
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .p2-claim-button:disabled {
@@ -2452,45 +2434,6 @@ button {
   box-shadow: 0 0 42px rgba(0, 0, 0, 0.48);
 }
 
-.p8-back-button {
-  position: absolute;
-  z-index: 6;
-  top: 2.2%;
-  left: 3.4%;
-  width: 9.2%;
-  aspect-ratio: 1;
-  margin: 0;
-  padding: 0;
-  border: 1.5px solid rgba(255, 255, 255, 0.92);
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 2px 8px rgba(56, 0, 0, 0.2);
-  cursor: pointer;
-  transition: transform 180ms ease, filter 180ms ease;
-}
-
-.p8-back-button::before {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 25%;
-  aspect-ratio: 1;
-  border-left: 2.4px solid rgba(255, 255, 255, 0.98);
-  border-bottom: 2.4px solid rgba(255, 255, 255, 0.98);
-  transform: translate(-25%, -50%) rotate(45deg);
-  filter: drop-shadow(0 1px 1px rgba(72, 0, 0, 0.38));
-}
-
-.p8-back-button::after {
-  content: none;
-}
-
-.p8-back-button:active {
-  transform: translateY(2px) scale(0.985);
-  filter: brightness(0.98);
-}
-
 .p8-hero-copy,
 .p8-qualification-copy,
 .p8-wechat-copy {
@@ -2515,7 +2458,6 @@ button {
   margin: 0;
 }
 
-.p8-lottery-no,
 .p8-status-notice,
 .p8-publicity-title,
 .p8-publicity-desc {
@@ -2529,61 +2471,71 @@ button {
   text-shadow: 0 1px 0 rgba(255, 234, 195, 0.5);
 }
 
-.p8-lottery-no {
-  top: 39.4%;
-  left: 15%;
-  width: 36%;
-  color: #8b2012;
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  text-align: left;
-}
-
-.p8-lottery-no::before {
-  content: "抽奖编号 ";
-  font-weight: 600;
-}
-
 .p8-status-copy {
   position: absolute;
   z-index: 3;
-  top: 63.85%;
-  left: 43%;
-  width: 30.5%;
-  height: 6.35%;
-  display: grid;
-  grid-template-rows: repeat(3, minmax(0, 1fr));
-  align-items: stretch;
+  top: 65.95%;
+  left: 30.45%;
+  width: 68%;
+  height: 7.35%;
   margin: 0;
   text-align: left;
   pointer-events: none;
+}
+
+.p8-status-list {
+  position: absolute;
+  top: -4%;
+  left: 16.7%;
+  width: 31.8%;
+  height: 92%;
+  display: grid;
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+  margin: 0;
+}
+
+.p8-status-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.p8-status-row dd {
+  min-width: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+  text-align: center;
+  white-space: nowrap;
+  text-shadow: 0 1px 0 rgba(255, 234, 195, 0.5);
+}
+
+.p8-status-row dd {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .p8-status-value,
 .p8-draw-time,
 .p8-status-lottery-no {
   position: static;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  margin: 0;
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: 0;
-  text-align: left;
-  white-space: nowrap;
-  text-shadow: 0 1px 0 rgba(255, 234, 195, 0.5);
 }
 
 .p8-status-value {
   color: #b21b12;
-  font-size: clamp(11px, 2.8vw, 12px);
+  font-size: clamp(10px, 2.45vw, 11.5px);
   font-weight: 800;
 }
 
 .p8-draw-time {
   color: #5b2917;
-  font-size: clamp(7px, 1.9vw, 8.5px);
+  font-size: clamp(7px, 1.75vw, 8px);
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2591,9 +2543,8 @@ button {
 
 .p8-status-lottery-no {
   color: #8b2012;
-  font-size: clamp(9px, 2.35vw, 10px);
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: clamp(7.8px, 1.9vw, 9px);
+  font-weight: 800;
 }
 
 .p8-status-notice {
@@ -2629,19 +2580,36 @@ button {
   border: 0;
 }
 
+.p8-publicity-result {
+  position: absolute;
+  z-index: 4;
+  top: -31%;
+  right: 3.8%;
+  width: 38.4%;
+  height: 173%;
+  display: block;
+  border-radius: 8px;
+  mix-blend-mode: multiply;
+  opacity: 0.96;
+  object-fit: cover;
+  object-position: center;
+}
+
 .p8-qrcode-frame {
   position: absolute;
   z-index: 4;
-  top: 81.8%;
-  right: 13.2%;
-  width: 29%;
+  top: 83.72%;
+  right: 16.15%;
+  width: 25.1%;
   aspect-ratio: 1;
   display: grid;
   place-items: center;
+  padding: 2.2%;
+  box-sizing: border-box;
   overflow: hidden;
-  border-radius: 5px;
+  border-radius: 0;
   color: #8b2012;
-  background: #fff0d7;
+  background: transparent;
   font-size: 12px;
   line-height: 1.35;
   text-align: center;
@@ -2651,7 +2619,7 @@ button {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .p8-not-qualified {
@@ -3442,6 +3410,7 @@ button {
   .p6-product-copy p {
     font-size: 11px;
   }
+
 }
 
 @media (max-height: 720px) {

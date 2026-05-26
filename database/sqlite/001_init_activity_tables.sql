@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS activity_config (
   status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'active', 'paused', 'ended')),
   start_at TEXT,
   end_at TEXT,
-  daily_default_chance INTEGER NOT NULL DEFAULT 1 CHECK (daily_default_chance >= 0),
+  daily_default_chance INTEGER NOT NULL DEFAULT 1000 CHECK (daily_default_chance >= 0),
   daily_share_bonus_limit INTEGER NOT NULL DEFAULT 3 CHECK (daily_share_bonus_limit >= 0),
   share_target INTEGER NOT NULL DEFAULT 5 CHECK (share_target >= 0),
   checkin_target INTEGER NOT NULL DEFAULT 7 CHECK (checkin_target >= 0),
@@ -315,6 +315,18 @@ CREATE TABLE IF NOT EXISTS grand_prize_qualification (
   UNIQUE (activity_code, user_id),
   FOREIGN KEY (activity_code) REFERENCES activity_config(activity_code),
   FOREIGN KEY (user_id) REFERENCES activity_user(id)
+);
+
+CREATE TABLE IF NOT EXISTS grand_prize_draw_config (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  activity_code TEXT NOT NULL UNIQUE,
+  draw_enabled INTEGER NOT NULL DEFAULT 0 CHECK (draw_enabled IN (0, 1)),
+  winning_lottery_nos TEXT NOT NULL DEFAULT '[]',
+  configured_by TEXT,
+  remark TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (activity_code) REFERENCES activity_config(activity_code)
 );
 
 CREATE TABLE IF NOT EXISTS tracking_event (

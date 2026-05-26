@@ -14,6 +14,7 @@ from .activity_service import (
     get_activity_state,
     get_claim_result,
     get_explain_detail,
+    get_grand_prize_draw_config,
     get_grand_prize_detail,
     get_reward_center,
     get_rules_detail,
@@ -21,6 +22,7 @@ from .activity_service import (
     record_tracking_event,
     randomize_benefit,
     resolve_claim_by_token,
+    save_grand_prize_draw_config,
 )
 from .health import build_health_status
 from .poster_service import resolve_poster_path, save_poster
@@ -101,6 +103,15 @@ class PosterSaveRequest(BaseModel):
     result_code: str | None = None
     sign_text: dict[str, Any] = Field(default_factory=dict)
     image_data_url: str = Field(..., min_length=32)
+
+
+class GrandPrizeDrawConfigRequest(BaseModel):
+    activity_code: str = DEFAULT_ACTIVITY_CODE
+    draw_enabled: bool = False
+    draw_time: str | None = None
+    winning_lottery_nos: list[str] = Field(default_factory=list)
+    configured_by: str | None = None
+    remark: str | None = None
 
 
 def _handle_api_error(error: ApiError):
@@ -209,6 +220,22 @@ def reward_center_detail(session_token: str = Query(...)):
 def grand_prize_qualification_detail(session_token: str = Query(...)):
     try:
         return get_grand_prize_detail(session_token)
+    except ApiError as error:
+        _handle_api_error(error)
+
+
+@app.get("/api/admin/grand-prize/draw-config")
+def admin_grand_prize_draw_config(activity_code: str = Query(DEFAULT_ACTIVITY_CODE)):
+    try:
+        return get_grand_prize_draw_config(activity_code)
+    except ApiError as error:
+        _handle_api_error(error)
+
+
+@app.post("/api/admin/grand-prize/draw-config")
+def admin_grand_prize_draw_config_save(request: GrandPrizeDrawConfigRequest):
+    try:
+        return save_grand_prize_draw_config(request.model_dump())
     except ApiError as error:
         _handle_api_error(error)
 

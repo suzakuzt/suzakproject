@@ -1,9 +1,15 @@
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import App from './App.vue'
-import { MINI_PROGRAM_COUPON_PAGE, goMiniProgramCouponPage } from './utils/miniProgramBridge'
+import {
+  MINI_PROGRAM_COUPON_PAGE,
+  MINI_PROGRAM_POSTER_SAVE_PAGE,
+  goMiniProgramCouponPage,
+  goMiniProgramPosterSavePage,
+} from './utils/miniProgramBridge'
 import { installRuntimeMonitor } from './utils/runtimeMonitor'
 
 vi.mock('./components/HelloWorld.vue', () => ({
@@ -28,9 +34,11 @@ const mountResult = (props = {}) => {
   return mount(App, { props: { initialPage: 'p2', ...props } })
 }
 const readSource = (relativePath) => readFileSync(resolve(process.cwd(), relativePath), 'utf8')
+const readBinary = (relativePath) => readFileSync(resolve(process.cwd(), relativePath))
+const sha256File = (relativePath) => createHash('sha256').update(readBinary(relativePath)).digest('hex').toUpperCase()
 
 const readPngSize = (relativePath) => {
-  const buffer = readFileSync(resolve(process.cwd(), relativePath))
+  const buffer = readBinary(relativePath)
 
   return {
     width: buffer.readUInt32BE(16),
@@ -65,9 +73,30 @@ describe('P1 activity home', () => {
 
     expect(goMiniProgramCouponPage()).toBe(true)
     expect(navigateTo).toHaveBeenCalledWith({ url: MINI_PROGRAM_COUPON_PAGE })
+    expect(goMiniProgramCouponPage(`${MINI_PROGRAM_COUPON_PAGE}?claim_token=ct_test`)).toBe(true)
+    expect(navigateTo).toHaveBeenLastCalledWith({ url: `${MINI_PROGRAM_COUPON_PAGE}?claim_token=ct_test` })
 
     delete window.wx
     expect(goMiniProgramCouponPage()).toBe(false)
+  })
+
+  it('navigates to the mini-program poster-save page with an encoded poster image url', () => {
+    const navigateTo = vi.fn()
+    window.wx = {
+      miniProgram: {
+        navigateTo,
+      },
+    }
+    const posterUrl = 'https://gkcq2026.nat100.top/api/poster/image/home_poster_test'
+
+    expect(goMiniProgramPosterSavePage(posterUrl)).toBe(true)
+    expect(navigateTo).toHaveBeenCalledWith({
+      url: `${MINI_PROGRAM_POSTER_SAVE_PAGE}?posterUrl=${encodeURIComponent(posterUrl)}`,
+    })
+
+    delete window.wx
+    expect(goMiniProgramPosterSavePage(posterUrl)).toBe(false)
+    expect(goMiniProgramPosterSavePage('')).toBe(false)
   })
 
   it('uses the real mini-program my-coupon page path for coupon targets', () => {
@@ -83,33 +112,45 @@ describe('P1 activity home', () => {
     expect(contents).not.toContain(legacyCouponPage)
   })
 
-  it('renders the confirmed P1 home copy with one default draw chance', () => {
+  it('renders the confirmed P1 home copy with 1000 default draw chances', () => {
     const wrapper = mountHome()
 
     expect(wrapper.text()).toContain('立即摇签')
-    expect(wrapper.text()).toContain('我的摇签机会 1次')
+    expect(wrapper.text()).toContain('我的摇签机会 1000次')
     expect(wrapper.text()).toContain('活动规则')
     expect(wrapper.get('[data-testid="home-rewards-entry"]').text()).toBe('每日打卡')
     expect(wrapper.text()).toContain('分享获取次数')
     expect(wrapper.text()).not.toContain('今日已摇签')
   })
 
-  it('renders five restrained golden reward barrage items on home', () => {
+  it('renders a continuous golden reward barrage with every coupon tier on home', () => {
     const wrapper = mountHome()
     const items = wrapper.findAll('[data-testid="home-barrage-item"]')
     const rewardPattern = /^\d{3}\*{5}\d{3}\u62bd\u4e2d\d+(?:\.\d+)?(?:\u5143|\u6298)\u4f18\u60e0\u5238$/
-    const realCarrierPrefixes = new Set(['130', '138', '158', '186', '189'])
+    const realCarrierPrefixes = new Set(['130', '138', '156', '177', '189'])
+    const itemTexts = items.map((item) => item.text())
+    const uniqueTexts = [...new Set(itemTexts)]
     const prefixes = items.map((item) => item.text().slice(0, 3))
     const rewardTypes = items.map((item) =>
       item.text().replace(/^\d{3}\*{5}\d{3}\u62bd\u4e2d/, '').replace(/\u4f18\u60e0\u5238$/, ''),
     )
 
     expect(wrapper.get('[data-testid="home-barrage"]').attributes('aria-hidden')).toBe('true')
-    expect(items).toHaveLength(5)
+    expect(items).toHaveLength(10)
+    expect(uniqueTexts).toHaveLength(5)
     expect(items[0].text()).toBe('138*****438\u62bd\u4e2d10\u5143\u4f18\u60e0\u5238')
+    expect(itemTexts).toContain('177*****219\u62bd\u4e2d9\u6298\u4f18\u60e0\u5238')
+    expect(itemTexts).toContain('156*****706\u62bd\u4e2d7.5\u6298\u4f18\u60e0\u5238')
+    expect(wrapper.get('[data-testid="home-barrage-track"]').attributes('style')).toBe(
+      '--barrage-track-height: 333.33333333333337%; --barrage-item-height: 10%; --barrage-duration: 12s;',
+    )
+    expect(items.map((item) => item.attributes('style'))).toEqual(new Array(10).fill(undefined))
+    expect(wrapper.get('[data-testid="home-barrage-track"]').text()).toMatch(
+      /^138\*{5}438.*130\*{5}721.*189\*{5}906.*177\*{5}219.*156\*{5}706.*138\*{5}438/s,
+    )
+    expect(wrapper.findAll('.home-barrage-text')).toHaveLength(10)
     expect(prefixes.every((prefix) => realCarrierPrefixes.has(prefix))).toBe(true)
-    expect(rewardTypes).toEqual(['10\u5143', '20\u5143', '30\u5143', '9\u6298', '7.5\u6298'])
-    expect(items.map((item) => item.text())).not.toContain('177*****219\u62bd\u4e2d7.5\u6298\u4f18\u60e0\u5238')
+    expect([...new Set(rewardTypes)]).toEqual(['10\u5143', '20\u5143', '30\u5143', '9\u6298', '7.5\u6298'])
     expect(items.every((item) => rewardPattern.test(item.text()))).toBe(true)
   })
 
@@ -144,17 +185,19 @@ describe('P1 activity home', () => {
     })
   })
 
-  it('shows the text wordmark on home and removes Prime Cuts stamp images from other pages', () => {
+  it('shows the provided image logo on home and removes Prime Cuts stamp images from other pages', () => {
     const home = mountHome()
     const result = mountResult()
     const rewards = mount(App, { props: { initialPage: 'p6' } })
 
-    const wordmark = home.get('[data-testid="brand-wordmark-home"]')
-    expect(home.find('[data-testid="brand-logo-home"]').exists()).toBe(false)
-    expect(wordmark.text()).not.toContain('1870s')
-    expect(wordmark.text()).toContain('Prime')
-    expect(wordmark.text()).toContain('Cuts')
-    expect(home.get('.home-brand-wordmark-sub').text()).toBe('\u749e\u83b1\u7267')
+    const logo = home.get('[data-testid="brand-logo-home"]')
+    expect(logo.attributes('src')).toContain('logo_prime_cuts_home.png')
+    expect(logo.attributes('alt')).toBe('Prime Cuts 璞莱牧')
+    expect(home.find('[data-testid="brand-wordmark-home"]').exists()).toBe(false)
+    expect(readPngSize('public/assets/home/logo_prime_cuts_home.png')).toEqual({
+      width: 305,
+      height: 98,
+    })
     expect(result.find('[data-testid="brand-logo-result"]').exists()).toBe(false)
     expect(rewards.find('[data-testid="brand-logo-rewards"]').exists()).toBe(false)
   })
@@ -212,18 +255,19 @@ describe('P1 activity home', () => {
     expect(css).toMatch(/\.draw-button\s*{[^}]*top:\s*81\.4%;[^}]*width:\s*70%;/s)
     expect(css).toMatch(/\.bottom-nav\s*{[^}]*bottom:\s*2\.4%;/s)
     expect(css).not.toContain('.brand-logo')
-    expect(css).toMatch(/\.home-brand-wordmark\s*{[^}]*width:\s*18\.5%;/s)
-    expect(css).toMatch(/\.home-brand-wordmark\s*{[^}]*background:\s*transparent;/s)
-    expect(css).toMatch(/\.home-brand-wordmark\s*{[^}]*border:\s*0;/s)
-    expect(css).toMatch(/\.home-barrage\s*{[^}]*top:\s*28\.2%;[^}]*height:\s*12\.8%;/s)
-    expect(css).toMatch(/\.home-barrage-item\s*{[^}]*color:\s*#f8d982;[^}]*animation:\s*home-barrage-scroll/s)
-    expect(css).toMatch(/@keyframes home-barrage-scroll[\s\S]*left:\s*-86%;[\s\S]*left:\s*106%;/)
-    expect(css).toContain('font-size: clamp(8px, 2.4vw, 11px);')
-    expect(css).toMatch(/\.home-brand-wordmark-main\s*{[^}]*font-family:\s*Georgia/s)
-    expect(css).toMatch(/\.home-brand-wordmark-main\s*{[^}]*color:\s*#fff;/s)
-    expect(css).toMatch(/\.home-brand-wordmark-sub\s*{[^}]*font-family:\s*"Microsoft YaHei"/s)
-    expect(css).toMatch(/\.home-brand-wordmark-sub\s*{[^}]*font-size:\s*clamp\(8px,\s*2\.4vw,\s*11px\);/s)
-    expect(css).toMatch(/\.home-brand-wordmark-sub\s*{[^}]*color:\s*#fff;/s)
+    expect(css).toMatch(/\.home-brand-logo\s*{[^}]*top:\s*3\.4%;[^}]*left:\s*5\.1%;[^}]*width:\s*23%;/s)
+    expect(css).toMatch(/\.home-brand-logo\s*{[^}]*object-fit:\s*contain;/s)
+    expect(css).toMatch(/\.home-barrage\s*{[^}]*top:\s*32\.2%;[^}]*left:\s*50%;[^}]*width:\s*80%;[^}]*height:\s*9\.6%;[^}]*transform:\s*translateX\(-50%\);/s)
+    expect(css).toMatch(/\.home-barrage-item\s*{[^}]*font-size:\s*clamp\(9\.5px,\s*2\.2vw,\s*11px\);/s)
+    expect(css).toMatch(/\.home-barrage-track\s*{[^}]*height:\s*var\(--barrage-track-height\);[^}]*animation:\s*home-barrage-scroll/s)
+    expect(css).toMatch(/\.home-barrage-item\s*{[^}]*position:\s*static;[^}]*flex:\s*0\s+0\s+var\(--barrage-item-height\);/s)
+    expect(css).toMatch(/\.home-barrage-item\s*{[^}]*width:\s*100%;/s)
+    expect(css).toMatch(/\.home-barrage-text\s*{[^}]*width:\s*100%;[^}]*text-align:\s*center;/s)
+    expect(css).toMatch(/\.home-barrage-item\s*{[^}]*color:\s*#f8d982;/s)
+    expect(css).toMatch(/@keyframes home-barrage-scroll[\s\S]*transform:\s*translateY\(0\)[\s\S]*transform:\s*translateY\(-50%\)/)
+    expect(css).not.toContain('home-barrage-rise')
+    expect(css).not.toContain('.home-brand-wordmark-main')
+    expect(css).not.toContain('.home-brand-wordmark-sub')
     expect(css).not.toContain('.p2-brand-logo')
     expect(css).not.toContain('.p6-brand-logo')
   })
@@ -233,6 +277,9 @@ describe('P1 activity home', () => {
 
     expect(css).toContain('--theme-primary: #b80606;')
     expect(css).toContain('--gold-deep: #c99b4d;')
+    expect(css).toMatch(/html,\s*body\s*{[^}]*background:\s*#230201;/s)
+    expect(css).toMatch(/#app\s*{[^}]*background:\s*#230201;/s)
+    expect(css).not.toContain('background: #8c0300;')
     expect(css).not.toContain('.home-stage::before')
     expect(css).toMatch(/\.home-stage\s*{[^}]*background-size:\s*100% 100%;/s)
     expect(css).toMatch(/\.lottery-shadow\s*{[^}]*mix-blend-mode:\s*multiply;/s)
@@ -270,9 +317,9 @@ describe('P1 activity home', () => {
   it('renders P2/P4 as one asset-based result page with a collapsed AI scroll', () => {
     const wrapper = mountResult({
       initialP2Result: {
-        signType: 'LUCKY_SIGN',
+        signType: '过儿签',
         signLevel: 'TOP_SIGN',
-        mainTextColumns: ['CENTER_COPY'],
+        mainTextColumns: ['考试期间，不要叫我真名，叫我过儿。'],
         goodFor: 'LEFT_COPY',
         avoid: 'RIGHT_COPY',
       },
@@ -291,14 +338,23 @@ describe('P1 activity home', () => {
 
     expect(wrapper.get('[data-testid="p2-combined-card"]').exists()).toBe(true)
     expect(html).toContain('bg_ai_result_page.png')
-    expect(html).toContain('text_beef_super_luck_sign.png')
-    expect(html).toContain('element_luck_tag_vertical_full.png')
+    expect(html).not.toContain('text_beef_super_luck_sign.png')
+    expect(html).not.toContain('element_luck_tag_vertical_full.png')
     expect(html).toContain('text_ai_result_scroll_header_double_tassel.png')
     expect(html).toContain('text_claim_exclusive_reward_sign.png')
-    expect(wrapper.text()).toContain('拨云见吉')
-    expect(wrapper.text()).toContain('轻轻划开，解锁 AI 解签')
-    expect(wrapper.get('[data-testid="p2-left-luck"]').text()).toContain('LEFT_COPY')
-    expect(wrapper.get('[data-testid="p2-right-luck"]').text()).toContain('RIGHT_COPY')
+    expect(wrapper.text()).toContain('过儿签')
+    expect(wrapper.text()).toContain('考试期间，不要叫我真名，叫我过儿。')
+    expect(wrapper.findAll('[data-testid="p2-fortune-line"]').map((line) => line.text())).toEqual([
+      '考试期间，',
+      '不要叫我真名，',
+      '叫我过儿。',
+    ])
+    expect(wrapper.get('.p2-fortune-emphasis').text()).toBe('过儿')
+    expect(wrapper.text()).not.toContain('拨云见吉')
+    expect(wrapper.find('[data-testid="p2-left-luck"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="p2-right-luck"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('LEFT_COPY')
+    expect(wrapper.text()).not.toContain('RIGHT_COPY')
     expect(wrapper.get('[data-testid="p2-product-image"]').attributes('src')).toContain('product_flat_iron_steak.png')
     expect(wrapper.get('[data-testid="p2-ai-scroll"]').classes()).not.toContain('is-open')
     expect(wrapper.get('[data-testid="p2-ai-panel"]').text()).not.toContain('INLINE_AI_COPY')
@@ -318,6 +374,21 @@ describe('P1 activity home', () => {
 
     expect(wrapper.get('[data-testid="p2-claim-benefit"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="p4-rewards-entry"]').exists()).toBe(false)
+  })
+
+  it('removes both vertical side fortune copies from the result page', () => {
+    const wrapper = mountResult({
+      initialP2Result: {
+        goodFor: '吉｜坏事开始转弯',
+        avoid: '吉｜压力自动降噪',
+      },
+    })
+
+    expect(wrapper.find('[data-testid="p2-left-luck"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="p2-right-luck"]').exists()).toBe(false)
+    expect(wrapper.find('.p2-side-text').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('坏事开始转弯')
+    expect(wrapper.text()).not.toContain('压力自动降噪')
   })
 
   it('opens the activity share poster with QR code but without the product image', async () => {
@@ -352,6 +423,28 @@ describe('P1 activity home', () => {
     expect(wrapper.find('[data-testid="p2-poster-dialog"]').exists()).toBe(false)
   })
 
+  it('uses the approved 2026-05-26 activity poster asset for every share entry', async () => {
+    const home = mountHome()
+    const result = mountResult()
+    const approvedPosterHash = 'ED85CD9997C41CA52291105C21318371FC3FA266F500B9E9B70DA8918C8F4DD0'
+
+    expect(sha256File('public/assets/share/share_activity_poster.png')).toBe(approvedPosterHash)
+    expect(readPngSize('public/assets/share/share_activity_poster.png')).toEqual({
+      width: 941,
+      height: 1672,
+    })
+
+    await home.get('[data-testid="share-entry"]').trigger('click')
+    await result.get('[data-testid="share-poster"]').trigger('click')
+
+    expect(home.get('[data-testid="home-share-activity-poster"]').find('.activity-share-poster-image').attributes('src')).toContain(
+      'share_activity_poster.png',
+    )
+    expect(result.get('[data-testid="p2-share-activity-poster"]').attributes('src')).toContain(
+      'share_activity_poster.png',
+    )
+  })
+
   it('saves the home share poster through the poster API and local download flow', async () => {
     const imageDataUrl =
       'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII='
@@ -362,6 +455,15 @@ describe('P1 activity home', () => {
       poster_url: '/api/poster/image/home_poster_test',
     })
     const createSession = vi.fn().mockResolvedValue({ session_token: 'sess_home' })
+    const recordShare = vi.fn().mockResolvedValue({
+      success: true,
+      reward_granted: true,
+      daily_state: {
+        remaining_draw_count: 1001,
+        share_reward_count_today: 1,
+      },
+      share_token: 'SH_HOME_POSTER',
+    })
     const trackEvent = vi.fn().mockResolvedValue({ success: true })
     const canvasContext = {
       drawImage: vi.fn(),
@@ -386,7 +488,7 @@ describe('P1 activity home', () => {
       }
     }
     const wrapper = mountHome({
-      apiClient: { createSession, savePoster, trackEvent },
+      apiClient: { createSession, savePoster, recordShare, trackEvent },
     })
 
     await wrapper.get('[data-testid="share-entry"]').trigger('click')
@@ -401,8 +503,13 @@ describe('P1 activity home', () => {
         image_data_url: imageDataUrl,
       }),
     )
+    expect(canvasContext.scale).toHaveBeenCalledWith(1, 1)
     expect(anchorClickSpy).toHaveBeenCalled()
-    expect(wrapper.get('[data-testid="home-share-poster-save-message"]').text()).toContain('海报已保存')
+    expect(recordShare).toHaveBeenCalledWith({ session_token: 'sess_home', share_channel: 'poster_save' })
+    expect(wrapper.text()).toContain('我的摇签机会 1001次')
+    expect(wrapper.get('[data-testid="home-share-poster-save-message"]').text()).toBe(
+      '保存成功，手机端请长按上方图片保存到相册',
+    )
     expect(wrapper.get('[data-testid="home-share-generated-preview"]').attributes('src')).toBe(
       '/api/poster/image/home_poster_test',
     )
@@ -417,6 +524,76 @@ describe('P1 activity home', () => {
     revokeObjectUrlSpy.mockRestore()
   })
 
+  it('opens the mini-program native poster-save page when a saved poster url is available', async () => {
+    const imageDataUrl =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII='
+    const navigateTo = vi.fn()
+    window.wx = {
+      miniProgram: {
+        navigateTo,
+      },
+    }
+    const savePoster = vi.fn().mockResolvedValue({
+      success: true,
+      saved: true,
+      poster_id: 'home_poster_test',
+      poster_url: '/api/poster/image/home_poster_test',
+    })
+    const createSession = vi.fn().mockResolvedValue({ session_token: 'sess_home' })
+    const recordShare = vi.fn().mockResolvedValue({
+      success: true,
+      reward_granted: true,
+      daily_state: {
+        remaining_draw_count: 1001,
+        share_reward_count_today: 1,
+      },
+      share_token: 'SH_HOME_POSTER',
+    })
+    const trackEvent = vi.fn().mockResolvedValue({ success: true })
+    const canvasContext = {
+      drawImage: vi.fn(),
+      fillRect: vi.fn(),
+      fillText: vi.fn(),
+      restore: vi.fn(),
+      save: vi.fn(),
+      scale: vi.fn(),
+    }
+    const originalImage = globalThis.Image
+    const originalToBlob = HTMLCanvasElement.prototype.toBlob
+    const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(canvasContext)
+    const toDataUrlSpy = vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue(imageDataUrl)
+    const anchorClickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    HTMLCanvasElement.prototype.toBlob = vi.fn((callback) => callback(new Blob(['png'], { type: 'image/png' })))
+    globalThis.Image = class {
+      set src(value) {
+        this._src = value
+        setTimeout(() => this.onload?.(), 0)
+      }
+    }
+    const wrapper = mountHome({
+      apiClient: { createSession, savePoster, recordShare, trackEvent },
+    })
+
+    await wrapper.get('[data-testid="share-entry"]').trigger('click')
+    await wrapper.get('[data-testid="save-home-share-poster"]').trigger('click')
+    await flushPromises()
+
+    const posterUrl = `${window.location.origin}/api/poster/image/home_poster_test`
+    expect(navigateTo).toHaveBeenCalledWith({
+      url: `${MINI_PROGRAM_POSTER_SAVE_PAGE}?posterUrl=${encodeURIComponent(posterUrl)}`,
+    })
+    expect(anchorClickSpy).not.toHaveBeenCalled()
+    expect(recordShare).toHaveBeenCalledWith({ session_token: 'sess_home', share_channel: 'poster_save' })
+    expect(wrapper.get('[data-testid="home-share-poster-save-message"]').text()).toBe('正在打开小程序保存到相册...')
+
+    wrapper.unmount()
+    globalThis.Image = originalImage
+    HTMLCanvasElement.prototype.toBlob = originalToBlob
+    getContextSpy.mockRestore()
+    toDataUrlSpy.mockRestore()
+    anchorClickSpy.mockRestore()
+  })
+
   it('saves the poster image through the backend poster API before sharing', async () => {
     const imageDataUrl =
       'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII='
@@ -427,6 +604,15 @@ describe('P1 activity home', () => {
       poster_url: '/api/poster/image/poster_test',
     })
     const createSession = vi.fn().mockResolvedValue({ session_token: 'sess_test' })
+    const recordShare = vi.fn().mockResolvedValue({
+      success: true,
+      reward_granted: true,
+      daily_state: {
+        remaining_draw_count: 1001,
+        share_reward_count_today: 1,
+      },
+      share_token: 'SH_RESULT_POSTER',
+    })
     const trackEvent = vi.fn().mockResolvedValue({ success: true })
     const canvasContext = {
       beginPath: vi.fn(),
@@ -456,7 +642,7 @@ describe('P1 activity home', () => {
       }
     }
     const wrapper = mountResult({
-      apiClient: { createSession, savePoster, trackEvent },
+      apiClient: { createSession, savePoster, recordShare, trackEvent },
     })
 
     await wrapper.get('[data-testid="share-poster"]').trigger('click')
@@ -472,11 +658,14 @@ describe('P1 activity home', () => {
         image_data_url: imageDataUrl,
       }),
     )
-    expect(wrapper.get('[data-testid="p2-poster-save-message"]').text()).toContain('海报已保存')
+    expect(wrapper.get('[data-testid="p2-poster-save-message"]').text()).toBe(
+      '保存成功，手机端请长按上方图片保存到相册',
+    )
     expect(wrapper.get('[data-testid="p2-poster-generated-preview"]').attributes('src')).toBe(
       '/api/poster/image/poster_test',
     )
-    expect(wrapper.get('[data-testid="p2-poster-save-message"]').text()).toContain('长按上方图片')
+    expect(recordShare).toHaveBeenCalledWith({ session_token: 'sess_test', share_channel: 'poster_save' })
+    expect(wrapper.get('[data-testid="p2-poster-save-message"]').text()).toContain('保存到相册')
 
     expect(canvasContext.moveTo).not.toHaveBeenCalledWith(80, 400)
     expect(canvasContext.moveTo).not.toHaveBeenCalledWith(80, 562)
@@ -526,41 +715,55 @@ describe('P1 activity home', () => {
     expect(wrapper.find('.p4-page').exists()).toBe(false)
     expect(wrapper.get('[data-testid="p2-ai-scroll"]').classes()).toContain('is-open')
     expect(wrapper.get('[data-testid="p2-ai-result"]').text()).toContain('INLINE_AI_COPY')
+    expect(wrapper.get('[data-testid="share-poster"]').classes()).toContain('is-explain-open')
+  })
+
+  it('keeps the share poster action clickable after the AI scroll opens', async () => {
+    const wrapper = mountResult({
+      initialP4Detail: {
+        explainLines: ['INLINE_AI_COPY'],
+      },
+    })
+
+    await wrapper.get('[data-testid="ask-xiaopu"]').trigger('click')
+    await wrapper.get('[data-testid="share-poster"]').trigger('click')
+
+    expect(wrapper.get('[data-testid="p2-poster-dialog"]').exists()).toBe(true)
   })
 
   it('keeps the P2/P4 sign typography and tilted beef product aligned to the reference design', () => {
     const css = readSource('src/style.css')
 
-    expect(css).toMatch(/\.p2-title-sign\s*{[^}]*width:\s*56%;/s)
+    expect(css).not.toMatch(/\.p2-title-sign\s*{[^}]*width:\s*56%;/s)
     expect(css).toMatch(/\.p2-stage\s*{[^}]*width:\s*min\(100vw,\s*430px\);[^}]*aspect-ratio:\s*941\s*\/\s*1672;/s)
-    expect(css).toMatch(/\.p2-fortune-copy\s*{[^}]*top:\s*17%;/s)
+    expect(css).toMatch(/\.p2-fortune-copy\s*{[^}]*top:\s*10\.2%;/s)
     expect(css).toMatch(/\.p2-fortune-copy h2\s*{[^}]*font-family:\s*"STXingkai",\s*"华文行楷",\s*"FZKai-Z03S",\s*"KaiTi",\s*"STKaiti",\s*serif;/s)
-    expect(css).toMatch(/\.p2-side-copy,\s*\.p2-ai-panel\s*{[^}]*font-family:\s*"STKaiti",\s*"KaiTi",\s*"Kaiti SC",\s*"Songti SC",\s*serif;/s)
-    expect(css).toMatch(/\.p2-result-body\s*{[^}]*height:\s*41\.6%;/s)
-    expect(css).toMatch(/\.p2-fortune-copy h2\s*{[^}]*transform:\s*skewX\(-8deg\)\s*rotate\(-1\.5deg\)\s*scaleX\(0\.82\);/s)
-    expect(css).toMatch(/\.p2-fortune-copy p\s*{[^}]*gap:\s*5px;[^}]*font-size:\s*clamp\(12px,\s*3\.25vw,\s*15px\);/s)
-    expect(css).toMatch(/\.p2-fortune-copy p::before,\s*\.p2-fortune-copy p::after\s*{[^}]*width:\s*24px;/s)
-    expect(css).toMatch(/\.p2-side-text\s*{[^}]*top:\s*0\.6%;[^}]*width:\s*11\.2%;[^}]*height:\s*100%;/s)
-    expect(css).toMatch(/\.p2-good-for\s*{[^}]*left:\s*10\.4%;/s)
-    expect(css).toMatch(/\.p2-avoid\s*{[^}]*right:\s*12\.2%;/s)
-    expect(css).toMatch(/\.p2-side-copy\s*{[^}]*right:\s*21%;[^}]*left:\s*21%;/s)
-    expect(css).toMatch(/\.p2-side-copy p\s*{[^}]*font-weight:\s*900;/s)
-    expect(css).toMatch(/\.p2-side-copy p\s*{[^}]*text-shadow:\s*0\.35px 0 0 currentColor/s)
-    expect(css).toMatch(/\.p2-product-hero\s*{[^}]*width:\s*48%;[^}]*height:\s*48%;/s)
+    expect(css).toMatch(/\.p2-ai-panel\s*{[^}]*font-family:\s*"STKaiti",\s*"KaiTi",\s*"Kaiti SC",\s*"Songti SC",\s*serif;/s)
+    expect(css).toMatch(/\.p2-result-body\s*{[^}]*top:\s*74\.2%;[^}]*height:\s*15\.6%;/s)
+    expect(css).toMatch(/\.p2-fortune-copy h2\s*{[^}]*font-size:\s*clamp\(24px,\s*6\.2vw,\s*31px\);/s)
+    expect(css).toMatch(/\.p2-fortune-copy p\s*{[^}]*max-width:\s*76%;[^}]*margin:\s*1\.7%\s*auto\s*0;[^}]*font-size:\s*clamp\(25px,\s*7\.4vw,\s*34px\);[^}]*line-height:\s*1\.34;/s)
+    expect(css).toMatch(/\.p2-fortune-line\s*{[^}]*display:\s*block;/s)
+    expect(css).toMatch(/\.p2-fortune-emphasis\s*{[^}]*color:\s*#b42418;/s)
+    expect(css).toMatch(/\.p2-product-hero\s*{[^}]*left:\s*29%;[^}]*width:\s*22%;[^}]*height:\s*58%;/s)
     expect(css).toMatch(/\.p2-product-hero::after\s*{[^}]*radial-gradient\(ellipse/s)
-    expect(css).toMatch(/\.p2-product-hero img\s*{[^}]*transform:\s*rotate\(-10deg\)\s*scale\(1\.01\);/s)
-    expect(css).toMatch(/\.p2-product-hero img\s*{[^}]*drop-shadow\(0 26px 20px rgba\(82,\s*5,\s*0,\s*0\.36\)\)/s)
-    expect(css).toMatch(/\.p2-ai-panel\s*{[^}]*top:\s*56\.4%;[^}]*width:\s*66%;/s)
-    expect(css).toMatch(/\.p2-scroll-head\s*{[^}]*width:\s*80%;[^}]*margin:\s*0 auto;/s)
+    expect(css).toMatch(/\.p2-product-hero img\s*{[^}]*transform:\s*rotate\(-4deg\)\s*scale\(0\.92\);/s)
+    expect(css).toMatch(/\.p2-ai-panel\s*{[^}]*top:\s*36\.5%;[^}]*width:\s*76%;/s)
+    expect(css).toMatch(/\.p2-scroll-head\s*{[^}]*width:\s*72%;[^}]*margin:\s*0 auto;/s)
     expect(css).toMatch(/\.p2-scroll-body\s*{[^}]*url\("\/assets\/p4\/element_ai_result_blank_scroll_panel\.png"\)/s)
-    expect(css).toMatch(/\.p2-scroll-body\s*{[^}]*width:\s*92%;[^}]*margin:\s*-18\.8%\s*auto\s*0;/s)
-    expect(css).toMatch(/\.p2-ai-scroll\.is-open \.p2-scroll-body\s*{[^}]*min-height:\s*220px;[^}]*max-height:\s*252px;[^}]*padding:\s*34px\s*30px\s*48px;/s)
-    expect(css).toMatch(/\.p2-ai-result\s*{[^}]*max-height:\s*170px;/s)
+    expect(css).toMatch(/\.p2-scroll-body\s*{[^}]*width:\s*94%;[^}]*margin:\s*-16\.5%\s*auto\s*0;/s)
+    expect(css).toMatch(/\.p2-ai-scroll\.is-open \.p2-scroll-body\s*{[^}]*min-height:\s*252px;[^}]*max-height:\s*292px;[^}]*padding:\s*42px\s*30px\s*46px;/s)
+    expect(css).toMatch(/\.p2-ai-result\s*{[^}]*max-height:\s*200px;/s)
+    expect(css).toMatch(/\.p2-ai-result\s*{[^}]*overflow:\s*hidden;/s)
+    expect(css).not.toMatch(/\.p2-ai-result\s*{[^}]*overflow-y:\s*auto;/s)
+    expect(css).toMatch(/\.p2-ai-result p\s*{[^}]*font-size:\s*clamp\(14px,\s*3\.45vw,\s*16px\);/s)
     expect(css).not.toMatch(/\.p2-scroll-foot\s*{[^}]*radial-gradient/s)
     expect(css).toMatch(/\.p2-ai-loading\s*{[^}]*gap:\s*4px;/s)
     expect(css).toMatch(/\.p2-ai-panel \.p4-thinking-line\s*{[^}]*font-size:\s*13px;/s)
-    expect(css).toMatch(/\.p2-claim-button\s*{[^}]*bottom:\s*4\.2%;[^}]*width:\s*60%;/s)
-    expect(css).toMatch(/\.p2-poster-button\s*{[^}]*width:\s*40%;[^}]*border-bottom:\s*2px solid #d8b25f;[^}]*background:\s*transparent;/s)
+    expect(css).toMatch(/\.p2-claim-button\s*{[^}]*bottom:\s*3\.4%;[^}]*width:\s*56%;/s)
+    expect(css).toMatch(/\.p2-poster-button\s*{[^}]*top:\s*67\.9%;[^}]*bottom:\s*auto;[^}]*width:\s*24%;[^}]*min-height:\s*20px;[^}]*padding:\s*0\s*0\s*3px;[^}]*border-bottom:\s*2px solid #a51d13;[^}]*font-size:\s*clamp\(13px,\s*3\.5vw,\s*15px\);[^}]*font-weight:\s*900;[^}]*letter-spacing:\s*0;/s)
+    expect(css).toMatch(/\.p2-poster-button\.is-explain-open\s*{[^}]*top:\s*67\.9%;[^}]*bottom:\s*auto;[^}]*opacity:\s*1;[^}]*pointer-events:\s*auto;/s)
+    expect(css).toMatch(/\.p2-result-body\s*{[^}]*pointer-events:\s*none;/s)
+    expect(css).not.toMatch(/\.p2-poster-button\.is-explain-open\s*{[^}]*pointer-events:\s*none;/s)
     expect(css).toMatch(/\.p2-poster-dialog\s*{[^}]*width:\s*min\(84vw,\s*332px\);/s)
     expect(css).toMatch(/\.p2-poster-card\s*{[^}]*background:\s*#a10805;[^}]*overflow:\s*hidden;/s)
     expect(css).toMatch(/\.activity-share-poster-image\s*{[^}]*aspect-ratio:\s*941\s*\/\s*1672;/s)
@@ -604,8 +807,37 @@ describe('P1 activity home', () => {
     expect(wrapper.find('[data-testid="p2-ai-result"]').exists()).toBe(false)
   })
 
+  it('shows a claimed-benefit hint before auto jumping to the rewards progress page', async () => {
+    vi.useFakeTimers()
+    const wrapper = mountResult({
+      initialP4Detail: {
+        benefit: {
+          claimStatus: 'claimed',
+        },
+      },
+    })
+
+    try {
+      await wrapper.get('[data-testid="p2-claim-benefit"]').trigger('click')
+
+      expect(wrapper.get('.p4-claim-tip').text()).toContain('即将跳转到我的考运进度')
+      expect(window.location.pathname).toBe('/activity/result')
+
+      await vi.advanceTimersByTimeAsync(1999)
+      expect(window.location.pathname).toBe('/activity/result')
+
+      await vi.advanceTimersByTimeAsync(1)
+      expect(window.location.pathname).toBe('/activity/rewards')
+      expect(wrapper.get('.p6-stage').exists()).toBe(true)
+    } finally {
+      wrapper.unmount()
+      vi.useRealTimers()
+    }
+  })
+
   it('redirects to the mini-program my-coupon page after a successful mobile claim', async () => {
     const navigateTo = vi.fn()
+    const couponTarget = `${MINI_PROGRAM_COUPON_PAGE}?claim_token=ct_test&claim_no=CL_TEST`
     window.wx = {
       miniProgram: {
         navigateTo,
@@ -622,7 +854,7 @@ describe('P1 activity home', () => {
       },
       action: {
         type: 'mini_program_coupon_package',
-        target: '/unused-backend-target',
+        target: couponTarget,
       },
     })
     const wrapper = mountResult({
@@ -650,7 +882,7 @@ describe('P1 activity home', () => {
         claim_channel: 'h5',
       }),
     )
-    expect(navigateTo).toHaveBeenCalledWith({ url: MINI_PROGRAM_COUPON_PAGE })
+    expect(navigateTo).toHaveBeenCalledWith({ url: couponTarget })
   })
 
   it('shows a successful claim hint instead of redirecting outside mini-program web-view', async () => {
@@ -814,6 +1046,17 @@ describe('P1 activity home', () => {
     expect(wrapper.text()).toContain('LOCKED_WECHAT_BENEFIT')
   })
 
+  it('locks the P8 status values into the background label column', () => {
+    const wrapper = mount(App, { props: { initialPage: 'p8' } })
+    const css = readSource('src/style.css')
+
+    expect(wrapper.findAll('.p8-status-row dt').every((label) => label.classes().includes('sr-only'))).toBe(true)
+    expect(css).toMatch(/\.p8-status-list\s*{[^}]*display:\s*grid;[^}]*grid-template-rows:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\);/s)
+    expect(css).toMatch(/\.p8-status-list\s*{[^}]*top:\s*-4%;[^}]*left:\s*16\.7%;[^}]*width:\s*31\.8%;[^}]*height:\s*92%;/s)
+    expect(css).toMatch(/\.p8-status-row\s*{[^}]*display:\s*flex;[^}]*align-items:\s*center;[^}]*justify-content:\s*center;/s)
+    expect(css).toMatch(/\.p8-status-row dd\s*{[^}]*width:\s*100%;[^}]*display:\s*flex;[^}]*align-items:\s*center;[^}]*justify-content:\s*center;/s)
+  })
+
   it('renders the P8 locked qualification copy without mojibake', () => {
     const wrapper = mount(App, {
       props: {
@@ -850,8 +1093,148 @@ describe('P1 activity home', () => {
       },
     })
 
-    expect(wrapper.find('.p8-status-lottery-no').text()).toBe('')
+    expect(wrapper.find('.p8-status-lottery-no').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('抽奖编号生成中，请稍后刷新')
+  })
+
+  it('renders the P8 draw date and lottery number on the prize page', () => {
+    const wrapper = mount(App, {
+      props: {
+        initialPage: 'p8',
+        initialP8Prize: {
+          qualification: {
+            qualified: true,
+            qualify_desc: 'QUALIFIED_DESC',
+            prize_title: '985 和牛礼盒',
+            lottery_no: 'GP20260526000024',
+          },
+          lottery_status: {
+            status: 'pending',
+            status_text: '待开奖',
+            draw_time_desc: '2026-06-18 10:00',
+            notice: '中奖编号将在本页面与企微社群同步公示',
+            publicity_title: '中奖公示',
+            publicity_desc: '开奖后将在此更新',
+          },
+        },
+      },
+    })
+
+    expect(wrapper.find('[data-testid="p8-lottery-no"]').exists()).toBe(false)
+    expect(wrapper.get('.p8-draw-time').text()).toBe('2026-06-18 10:00')
+    expect(wrapper.get('.p8-status-lottery-no').text()).toBe('GP20260526000024')
+  })
+
+  it('uses result artwork on the P8 publicity area after the draw is resolved', () => {
+    const won = mount(App, {
+      props: {
+        initialPage: 'p8',
+        initialP8Prize: {
+          qualification: {
+            qualified: true,
+            lottery_no: 'GP20260526000024',
+          },
+          lottery_status: {
+            status: 'won',
+            status_text: '已开奖',
+            draw_time_desc: '2026-06-18 10:00',
+            publicity_title: '恭喜中奖',
+            publicity_desc: '您的编号 GP20260526000024 已中奖，请留意企微通知',
+            is_drawn: true,
+            is_winner: true,
+          },
+        },
+      },
+    })
+    const lost = mount(App, {
+      props: {
+        initialPage: 'p8',
+        initialP8Prize: {
+          qualification: {
+            qualified: true,
+            lottery_no: 'GP20260526000025',
+          },
+          lottery_status: {
+            status: 'not_won',
+            status_text: '已开奖',
+            draw_time_desc: '2026-06-18 10:00',
+            publicity_title: '已开奖',
+            publicity_desc: '您的编号 GP20260526000025 未中奖，感谢参与',
+            is_drawn: true,
+            is_winner: false,
+          },
+        },
+      },
+    })
+    const pending = mount(App, {
+      props: {
+        initialPage: 'p8',
+        initialP8Prize: {
+          qualification: {
+            qualified: true,
+            lottery_no: 'GP20260526000026',
+          },
+          lottery_status: {
+            status: 'pending',
+            status_text: '待开奖',
+            draw_time_desc: '2026-06-18 10:00',
+            publicity_title: '中奖公示',
+            publicity_desc: '开奖后将在此更新',
+            is_drawn: false,
+            is_winner: false,
+          },
+        },
+      },
+    })
+
+    expect(readPngSize('public/assets/p8/result_grand_prize_won.png')).toEqual({ width: 1254, height: 1254 })
+    expect(readPngSize('public/assets/p8/result_grand_prize_not_won.png')).toEqual({ width: 1254, height: 1254 })
+    expect(won.get('[data-testid="p8-publicity-result"]').attributes('src')).toContain('result_grand_prize_won.png')
+    expect(won.get('[data-testid="p8-publicity-result"]').attributes('alt')).toBe('恭喜中奖')
+    expect(lost.get('[data-testid="p8-publicity-result"]').attributes('src')).toContain(
+      'result_grand_prize_not_won.png',
+    )
+    expect(lost.get('[data-testid="p8-publicity-result"]').attributes('alt')).toBe('未中奖')
+    expect(pending.find('[data-testid="p8-publicity-result"]').exists()).toBe(false)
+  })
+
+  it('keeps left P8 draw data while simplifying the winner publicity copy', () => {
+    const wrapper = mount(App, {
+      props: {
+        initialPage: 'p8',
+        initialP8Prize: {
+          qualification: {
+            qualified: true,
+            qualify_desc: 'QUALIFIED_DESC',
+            prize_title: '985 和牛礼盒',
+            lottery_no: 'GP20260526000024',
+          },
+          lottery_status: {
+            status: 'won',
+            status_text: '已开奖',
+            draw_time_desc: '2026-06-18 10:00',
+            notice: '中奖编号将在本页面与企微社群同步公示',
+            publicity_title: '恭喜中奖',
+            publicity_desc: '您的编号 GP20260526000024 已中奖，请留意企微通知',
+          },
+        },
+      },
+    })
+    const css = readSource('src/style.css')
+    const statusCopy = wrapper.get('.p8-status-copy')
+
+    expect(statusCopy.text()).toContain('已开奖')
+    expect(statusCopy.text()).toContain('2026-06-18 10:00')
+    expect(statusCopy.text()).toContain('GP20260526000024')
+    expect(wrapper.get('[data-testid="p8-publicity-result"]').attributes('src')).toContain(
+      'result_grand_prize_won.png',
+    )
+    expect(statusCopy.classes()).toContain('is-winner')
+    expect(wrapper.get('.p8-status-value').text()).toBe('已开奖')
+    expect(wrapper.find('.p8-publicity-desc').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('开奖后将在此更新')
+    expect(css).toMatch(/\.p8-publicity-result\s*{[^}]*top:\s*-31%;[^}]*right:\s*3\.8%;[^}]*width:\s*38\.4%;[^}]*height:\s*173%;/s)
+    expect(css).toMatch(/\.p8-publicity-result\s*{[^}]*border-radius:\s*8px;[^}]*mix-blend-mode:\s*multiply;[^}]*object-fit:\s*cover;/s)
   })
 
   it('keeps P8 fallback prize copy free of mojibake at the source', () => {
@@ -883,7 +1266,7 @@ describe('P1 activity home', () => {
     const p7Source = `${initialP7Defaults}\n${p7Overrides}`
 
     expect(p7Source).toContain('活动规则')
-    expect(p7Source).toContain('用户每日默认获得 1 次抽签机会。')
+    expect(p7Source).toContain('用户每日默认获得 1000 次抽签机会。')
     expect(p7Source).toContain('扫码添加企微')
     expect(p7Source).not.toMatch(/闁|閹|濞|娑|杩斿|\?\?\?/)
   })
@@ -895,6 +1278,45 @@ describe('P1 activity home', () => {
     expect(css).toMatch(/\.p6-back-button img,\s*\.p6-rule-button img,\s*\.p6-draw-again img,\s*\.p6-product-action img\s*{[^}]*filter:\s*none;/s)
   })
 
+  it('restores the P6 product recommendation and keeps draw-again below it', () => {
+    const wrapper = mount(App, {
+      props: {
+        initialPage: 'p6',
+      },
+    })
+    const css = readSource('src/style.css')
+
+    expect(wrapper.find('.p6-product-card').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="p6-product-action"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('\u7cbe\u9009\u597d\u7269\u63a8\u8350')
+    expect(wrapper.get('[data-testid="p6-draw-again"]').exists()).toBe(true)
+    expect(css).toMatch(/\.p6-product-card\s*{[^}]*top:\s*80%;/s)
+    expect(css).toMatch(/\.p6-draw-again\s*{[^}]*top:\s*89\.9%;/s)
+    expect(css).toContain('.p6-product-action')
+  })
+
+  it('keeps the P8 status rows aligned and QR code restrained', () => {
+    const css = readSource('src/style.css')
+
+    expect(css).toMatch(/\.p8-status-copy\s*{[^}]*top:\s*65\.95%;[^}]*left:\s*30\.45%;[^}]*width:\s*68%;[^}]*height:\s*7\.35%;/s)
+    expect(css).toMatch(/\.p8-status-list\s*{[^}]*top:\s*-4%;[^}]*left:\s*16\.7%;[^}]*width:\s*31\.8%;[^}]*height:\s*92%;/s)
+    expect(css).toMatch(/\.p8-status-value,\s*\.p8-draw-time,\s*\.p8-status-lottery-no\s*{/)
+    expect(css).toMatch(/\.p8-status-row dd\s*{[^}]*align-items:\s*center;[^}]*justify-content:\s*center;/s)
+    expect(css).toMatch(/\.p8-status-lottery-no\s*{[^}]*font-size:\s*clamp\(7\.8px,\s*1\.9vw,\s*9px\);/s)
+    expect(css).toMatch(/\.p8-qrcode-frame\s*{[^}]*top:\s*83\.72%;[^}]*right:\s*16\.15%;[^}]*width:\s*25\.1%;[^}]*padding:\s*2\.2%;[^}]*box-sizing:\s*border-box;/s)
+    expect(css).toMatch(/\.p8-qrcode-frame\s*{[^}]*background:\s*transparent;/s)
+  })
+
+  it('keeps the P8 back button visually consistent with previous pages', () => {
+    const css = readSource('src/style.css')
+
+    expect(css).toMatch(/\.p2-back-button,\s*\.p4-back-button,\s*\.p6-back-button,\s*\.p7-back-button,\s*\.p8-back-button\s*{/)
+    expect(css).toMatch(/\.p2-back-button::before,\s*\.p4-back-button::before,\s*\.p6-back-button::before,\s*\.p8-back-button::before\s*{[^}]*width:\s*22%;/s)
+    expect(css).toMatch(/\.p2-back-button::after,\s*\.p4-back-button::after,\s*\.p6-back-button::after,\s*\.p8-back-button::after\s*{[^}]*inset:\s*14%;/s)
+    expect(css).not.toMatch(/\.p8-back-button\s*{[^}]*border:\s*1\.5px/s)
+    expect(css).not.toMatch(/\.p8-back-button::after\s*{[^}]*content:\s*none;/s)
+  })
+
   it('keeps P6 reward action buttons compact on mobile cards', () => {
     const css = readSource('src/style.css')
 
@@ -903,6 +1325,180 @@ describe('P1 activity home', () => {
     expect(css).toMatch(/\.p6-reward-action\s*{[^}]*font-size:\s*clamp\(12px,\s*3\.05vw,\s*13px\);/s)
     expect(css).toMatch(/\.p6-reward-action\s*{[^}]*letter-spacing:\s*0\.04em;/s)
     expect(css).toMatch(/@media \(max-height:\s*640px\)\s*{[\s\S]*?\.p6-reward-action\s*{[^}]*width:\s*min\(54%,\s*64px\);/s)
+  })
+
+  it('changes P6 coupon buttons from claim to use only after the coupon is claimed', () => {
+    const wrapper = mount(App, {
+      props: {
+        initialPage: 'p6',
+        initialP6Center: {
+          claimed_rewards: [
+            {
+              reward_code: 'coupon_10',
+              reward_id: 'coupon_10_claimed',
+              reward_type: 'coupon',
+              title: '10',
+              unit_text: '元',
+              desc: '无门槛券',
+              status: 'unused',
+              action: {
+                type: 'mini_program_coupon_package',
+                target: MINI_PROGRAM_COUPON_PAGE,
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const buttons = wrapper.findAll('[data-testid="p6-reward-action"]').map((button) => button.text())
+
+    expect(buttons.slice(0, 5)).toEqual(['去使用', '去领取', '去领取', '去领取', '去领取'])
+  })
+
+  it('shows backend-state feedback when using claimed and unclaimed P6 coupon buttons', async () => {
+    const navigateTo = vi.fn()
+    window.wx = {
+      miniProgram: {},
+    }
+    const wrapper = mount(App, {
+      props: {
+        initialPage: 'p6',
+        initialP6Center: {
+          claimed_rewards: [
+            {
+              reward_code: 'coupon_10',
+              reward_id: 'coupon_10_claimed',
+              reward_type: 'coupon',
+              title: '10',
+              unit_text: '元',
+              desc: '无门槛券',
+              status: 'unused',
+              action: {
+                type: 'mini_program_coupon_package',
+                target: MINI_PROGRAM_COUPON_PAGE,
+              },
+            },
+          ],
+        },
+      },
+    })
+    const buttons = wrapper.findAll('[data-testid="p6-reward-action"]')
+
+    expect(buttons[0].text()).toBe('去使用')
+    expect(buttons[0].attributes('disabled')).toBeUndefined()
+    await buttons[0].trigger('click')
+
+    expect(navigateTo).not.toHaveBeenCalled()
+    expect(wrapper.get('.p6-action-tip').text()).toContain('已领取，请前往小程序我的优惠券查看')
+
+    expect(buttons[1].text()).toBe('去领取')
+    expect(buttons[1].attributes('disabled')).toBeUndefined()
+    await buttons[1].trigger('click')
+
+    expect(wrapper.get('.p6-action-tip').text()).toContain('请先完成抽签并领取成功')
+  })
+
+  it('uses qualification states for the P6 gift box action', () => {
+    const locked = mount(App, {
+      props: {
+        initialPage: 'p6',
+      },
+    })
+    const unlocked = mount(App, {
+      props: {
+        initialPage: 'p6',
+        initialP6Center: {
+          display_rewards: [
+            {
+              reward_id: 'gift_985',
+              reward_type: 'gift_lottery_qualification',
+              title: '985和牛礼盒',
+              desc: '抽奖资格',
+              status: 'qualified',
+              button_text: '去使用',
+              action: {
+                type: 'gift_qualification_detail',
+                target: '/activity/grand-prize',
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    expect(locked.get('[data-testid="p6-gift-action"]').text()).toBe('未达标')
+    expect(locked.get('[data-testid="p6-gift-action"]').classes()).toContain('is-muted')
+    expect(unlocked.get('[data-testid="p6-gift-action"]').text()).toBe('去查看')
+  })
+
+  it('opens a qualified P6 gift through the H5 grand-prize detail API', async () => {
+    const navigateTo = vi.fn()
+    const giftTarget = '/pages/product/detail?id=gift_985'
+    const getGrandPrizeDetail = vi.fn().mockResolvedValue({
+      qualification: {
+        qualified: true,
+        qualify_desc: 'QUALIFIED_DESC',
+        prize_title: '985 和牛礼盒',
+        lottery_no: 'GP20260526000024',
+      },
+      lottery_status: {
+        status: 'won',
+        status_text: '已开奖',
+        draw_time_desc: '2026-06-18 10:00',
+        notice: '中奖编号将在本页面与企微社群同步公示',
+        publicity_title: '恭喜中奖',
+        publicity_desc: '您的编号 GP20260526000024 已中奖，请留意企微通知',
+      },
+      wechat_group: {
+        qrcode_url: 'qrcode_grand_prize_wechat.png',
+      },
+    })
+    window.wx = {
+      miniProgram: {
+        navigateTo,
+      },
+    }
+
+    const wrapper = mount(App, {
+      props: {
+        initialPage: 'p6',
+        apiClient: {
+          createSession: vi.fn().mockResolvedValue({ session_token: 'sess_test' }),
+          getRewardCenter: vi.fn().mockResolvedValue({
+            display_rewards: [
+              {
+                reward_id: 'gift_985',
+                reward_type: 'gift_lottery_qualification',
+                title: '985和牛礼盒',
+                desc: '抽奖资格',
+                status: 'qualified',
+                button_text: '去查看',
+                action: {
+                  type: 'mini_program_product_detail',
+                  target: giftTarget,
+                },
+              },
+            ],
+          }),
+          getGrandPrizeDetail,
+          trackEvent: vi.fn().mockResolvedValue({}),
+        },
+      },
+    })
+
+    await flushPromises()
+    await wrapper.get('[data-testid="p6-gift-action"]').trigger('click')
+    await flushPromises()
+
+    expect(navigateTo).not.toHaveBeenCalledWith({ url: giftTarget })
+    expect(getGrandPrizeDetail).toHaveBeenCalledWith({ session_token: 'sess_test' })
+    expect(wrapper.find('[data-testid="p8-qrcode"]').exists()).toBe(true)
+    expect(wrapper.get('.p8-status-value').text()).toBe('已开奖')
+    expect(wrapper.get('[data-testid="p8-publicity-result"]').attributes('src')).toContain(
+      'result_grand_prize_won.png',
+    )
+    expect(wrapper.find('.p8-publicity-desc').exists()).toBe(false)
   })
 
   it('renders the rewards page copy without mojibake', () => {

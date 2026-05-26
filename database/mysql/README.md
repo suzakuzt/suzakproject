@@ -6,7 +6,7 @@
 
 | 顺序 | 文件 | 说明 |
 | --- | --- | --- |
-| 1 | `001_init_activity_tables.sql` | 创建 17 张活动业务表 |
+| 1 | `001_init_activity_tables.sql` | 创建 18 张活动业务表 |
 | 2 | `002_seed_basic_mock_config.sql` | 灌入基础活动配置、签文、产品、券、二维码 |
 
 `001_init_activity_tables.sql` 已包含 SQLite 后续迁移中的关键字段：每日状态、签文快照、手机号领取、claim_token、发券状态、大奖资格快照等。
@@ -51,7 +51,7 @@ SOURCE database/mysql/002_seed_basic_mock_config.sql;
 ## 4. 当前约定
 
 - 字符集使用 `utf8mb4`。
-- 表数量为 17 张，与当前活动业务口径一致。
+- 表数量为 18 张，与当前活动业务口径一致。
 - seed 包含 4 个 P2/P4 牛肉产品、5 个 P5 优惠券配置和 `coupon_issue_config` Hermes 发券配置。
 - 后端运行时当前仍使用 SQLite。上线切 MySQL 前，需要完成 MySQL 连接适配并跑接口冒烟。
 

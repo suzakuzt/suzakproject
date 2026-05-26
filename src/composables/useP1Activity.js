@@ -3,7 +3,10 @@ import { activityApi } from '../api/activityApi'
 import { MINI_PROGRAM_COUPON_PAGE, goMiniProgramCouponPage } from '../utils/miniProgramBridge'
 
 const MAX_DAILY_SHARE_REWARDS = 3
+const DEFAULT_DRAW_CHANCE = 1000
 const TIP_VISIBLE_MS = 3000
+const CLAIMED_BENEFIT_REWARD_REDIRECT_MS = 2000
+const CLAIMED_BENEFIT_REWARD_REDIRECT_MESSAGE = '即将跳转到我的考运进度'
 const PAGE_ROUTES = {
   home: '/activity/home',
   p2: '/activity/result',
@@ -58,12 +61,14 @@ const RESULT_PRODUCTS = [
   },
 ]
 const DEFAULT_P2_RESULT = {
-  signType: '金榜题名签',
+  signType: '过儿签',
   signLevel: '上上签',
-  mainTextColumns: ['金榜题名', '愿你落笔生花'],
-  goodFor: '肉质细嫩鲜香四溢',
-  avoid: '和牛好礼好运加持',
-  explainText: '今日宜沉心静气，按自己的节奏稳扎稳打。先把确定会做的题拿稳，再从容攻克难题。',
+  fortuneHeadline: '过儿签',
+  fortuneHint: '考试期间，不要叫我真名，叫我过儿。',
+  mainTextColumns: ['考试期间，不要叫我真名，叫我过儿。'],
+  goodFor: '',
+  avoid: '',
+  explainText: '此签一出，主打一个“精神改名大法”。\n名字先改成过儿，至于能不能过，先把气势拿捏住。\n遇事不要慌，先给自己取个吉利名，生活问你准备好了吗，你说：别问，问就是正在加载中。',
 }
 const DEFAULT_P4_DETAIL = {
   title: 'AI解签结果',
@@ -236,7 +241,7 @@ const DEFAULT_P7_RULES = {
   rules: [
     {
       rule_no: 1,
-      content: '用户每日默认获得 1 次抽签机会。',
+      content: '用户每日默认获得 1000 次抽签机会。',
     },
     {
       rule_no: 2,
@@ -302,7 +307,7 @@ const DEFAULT_P8_PRIZE = {
   lottery_status: {
     status: 'pending',
     status_text: '待开奖',
-    draw_time_desc: '活动结束后 3 个工作日内统一开奖',
+    draw_time_desc: '2026-06-18 10:00',
     notice: '中奖编号将在本页面与企微社群同步公示',
     publicity_title: '中奖公示',
     publicity_desc: '开奖后将在此更新',
@@ -320,7 +325,7 @@ Object.assign(DEFAULT_P7_RULES, {
   page_title: '活动规则',
   subtitle: '一举高中 · 六月牛气加油签',
   rules: [
-    { rule_no: 1, content: '用户每日默认获得 1 次抽签机会。' },
+    { rule_no: 1, content: '用户每日默认获得 1000 次抽签机会。' },
     { rule_no: 2, content: '完成抽签后，可根据结果领取对应优惠券福利。' },
     { rule_no: 3, content: '分享活动并带来好友完成抽签，可获得额外抽签机会。' },
     { rule_no: 4, content: '每日分享奖励最多 3 次，超出后不再增加抽签机会。' },
@@ -355,7 +360,7 @@ Object.assign(DEFAULT_P8_PRIZE, {
   lottery_status: {
     status: 'pending',
     status_text: '待开奖',
-    draw_time_desc: '活动结束后 3 个工作日内统一开奖',
+    draw_time_desc: '2026-06-18 10:00',
     notice: '中奖编号将在本页面与企微社群同步公示',
     publicity_title: '中奖公示',
     publicity_desc: '开奖后将在此更新',
@@ -467,8 +472,8 @@ const buildP5InputResultFromBenefit = (benefit = {}) =>
 const P6_FIXED_REWARD_CODES = ['coupon_10', 'coupon_20', 'coupon_30', 'discount_9', 'discount_75']
 const P6_FIXED_REWARD_CODE_SET = new Set(P6_FIXED_REWARD_CODES)
 const P6_REWARD_CLAIM_TEXT = '\u53bb\u9886\u53d6'
-const P6_REWARD_UNCLAIMED_TEXT = '\u672a\u9886\u53d6'
-const P6_GIFT_USE_TEXT = '\u53bb\u4f7f\u7528'
+const P6_REWARD_USE_TEXT = '\u53bb\u4f7f\u7528'
+const P6_GIFT_USE_TEXT = '\u53bb\u67e5\u770b'
 const MOBILE_PATTERN = /^1[3-9]\d{9}$/
 
 const normalizeP6Reward = (reward = {}) => ({
@@ -497,7 +502,7 @@ const mergeP6RewardSlot = (base = {}, reward = {}) => ({
     ...(reward.action ?? {}),
   },
 })
-const resolveP6SlotButtonText = (status) => (status === 'unused' ? P6_REWARD_CLAIM_TEXT : P6_REWARD_UNCLAIMED_TEXT)
+const resolveP6SlotButtonText = (status) => (status === 'unused' ? P6_REWARD_USE_TEXT : P6_REWARD_CLAIM_TEXT)
 const buildFixedP6DisplayRewards = (suppliedRewards, claimedRewards) => {
   const slotByCode = new Map()
 
@@ -511,7 +516,7 @@ const buildFixedP6DisplayRewards = (suppliedRewards, claimedRewards) => {
         reward_code: code,
         reward_id: code,
         status: 'unclaimed',
-        button_text: P6_REWARD_UNCLAIMED_TEXT,
+        button_text: P6_REWARD_CLAIM_TEXT,
       })
     })
 
@@ -776,7 +781,7 @@ export function useP1Activity(options = {}) {
   const userKey = ref(options.userKey ?? getLocalUserKey())
   const latestDrawId = ref(options.initialDrawId ?? null)
   const sessionPromise = ref(null)
-  const drawChance = ref(options.initialChance ?? 1)
+  const drawChance = ref(options.initialChance ?? DEFAULT_DRAW_CHANCE)
   const shareRewardCount = ref(options.initialShareRewardCount ?? 0)
   const currentPage = ref(initialPage)
   const p2Panel = ref('')
@@ -854,6 +859,7 @@ export function useP1Activity(options = {}) {
   const drawAnimationFinished = ref(false)
   let tipTimer = null
   let p4ClaimMessageTimer = null
+  let p4RewardRedirectTimer = null
   let p4ThinkingTimer = null
   let p4ThinkingStartedAt = 0
   let p4ExplainRequestId = 0
@@ -867,6 +873,12 @@ export function useP1Activity(options = {}) {
     if (p4ClaimMessageTimer) {
       clearTimeout(p4ClaimMessageTimer)
       p4ClaimMessageTimer = null
+    }
+  }
+  const clearP4RewardRedirectTimer = () => {
+    if (p4RewardRedirectTimer) {
+      clearTimeout(p4RewardRedirectTimer)
+      p4RewardRedirectTimer = null
     }
   }
   const clearP4ThinkingTimer = () => {
@@ -910,6 +922,23 @@ export function useP1Activity(options = {}) {
   const clearP4ClaimMessage = () => {
     clearP4ClaimMessageTimer()
     p4ClaimMessage.value = ''
+  }
+  const scheduleClaimedBenefitRewardRedirect = () => {
+    clearP4RewardRedirectTimer()
+    clearP4ClaimMessageTimer()
+    p4ClaimMessage.value = CLAIMED_BENEFIT_REWARD_REDIRECT_MESSAGE
+    trackEvent('claimed_benefit_reward_redirect_prompt', {
+      draw_id: latestDrawId.value,
+      reward_code: getVisibleP5RewardCode(),
+    })
+    p4RewardRedirectTimer = setTimeout(() => {
+      p4RewardRedirectTimer = null
+      trackEvent('claimed_benefit_reward_redirect_auto', {
+        draw_id: latestDrawId.value,
+        reward_code: getVisibleP5RewardCode(),
+      })
+      goRewards()
+    }, CLAIMED_BENEFIT_REWARD_REDIRECT_MS)
   }
   const showTimedTip = (message) => {
     clearTipTimer()
@@ -1104,6 +1133,7 @@ export function useP1Activity(options = {}) {
 
   const goHome = () => {
     resetDrawAnimation()
+    clearP4RewardRedirectTimer()
     setCurrentPage('home')
     p2Panel.value = ''
     clearP4ClaimMessage()
@@ -1116,6 +1146,7 @@ export function useP1Activity(options = {}) {
   onBeforeUnmount(() => {
     clearTipTimer()
     clearP4ClaimMessageTimer()
+    clearP4RewardRedirectTimer()
     clearP4ThinkingTimer()
   })
 
@@ -1145,6 +1176,7 @@ export function useP1Activity(options = {}) {
   }
 
   const goRewards = async () => {
+    clearP4RewardRedirectTimer()
     trackEvent('my_reward_click')
     trackEvent('reward_center_page_view')
     setCurrentPage('p6')
@@ -1375,6 +1407,7 @@ export function useP1Activity(options = {}) {
     trackEvent('p4_back_click')
     p4ExplainRequestId += 1
     clearP4ThinkingTimer()
+    clearP4RewardRedirectTimer()
     setCurrentPage('p2')
     clearP4ClaimMessage()
     p5UseMessage.value = ''
@@ -1437,6 +1470,11 @@ export function useP1Activity(options = {}) {
 
   const claimP4Benefit = async () => {
     if (p4Status.value !== 'success' || p4ClaimStatus.value === 'claiming') {
+      return
+    }
+
+    if (p4ClaimStatus.value === 'claimed') {
+      scheduleClaimedBenefitRewardRedirect()
       return
     }
 
@@ -1548,6 +1586,11 @@ export function useP1Activity(options = {}) {
   }
 
   const redirectP5ClaimAfterMobileBind = () => {
+    const couponTarget =
+      p5Result.value.action?.type === 'mini_program_coupon_package' && p5Result.value.action?.target
+        ? p5Result.value.action.target
+        : MINI_PROGRAM_COUPON_PAGE
+
     trackEvent('use_benefit_click', {
       trigger: 'auto_after_mobile_bind',
       claim_no: p5Result.value.claim_no ?? p5Result.value.claimNo,
@@ -1555,7 +1598,7 @@ export function useP1Activity(options = {}) {
     })
 
     p5UseStatus.value = 'redirecting'
-    const redirected = goMiniProgramCouponPage()
+    const redirected = goMiniProgramCouponPage(couponTarget)
     p5UseStatus.value = 'idle'
 
     if (redirected) {
@@ -1566,7 +1609,7 @@ export function useP1Activity(options = {}) {
       trackEvent('use_benefit_redirect_success', {
         trigger: 'auto_after_mobile_bind',
         action_type: 'mini_program_coupon_package',
-        target: MINI_PROGRAM_COUPON_PAGE,
+        target: couponTarget,
       })
       return
     }
@@ -1575,7 +1618,7 @@ export function useP1Activity(options = {}) {
     trackEvent('use_benefit_redirect_fail', {
       trigger: 'auto_after_mobile_bind',
       action_type: 'mini_program_coupon_package',
-      target: MINI_PROGRAM_COUPON_PAGE,
+      target: couponTarget,
     })
   }
 
@@ -1660,8 +1703,8 @@ export function useP1Activity(options = {}) {
 
     const isMiniProgramAction = String(action.type ?? '').startsWith('mini_program')
     if (action.type === 'mini_program_coupon_package') {
-      const redirected = goMiniProgramCouponPage()
-      messageRef.value = redirected ? '' : CLAIM_SUCCESS_COUPON_FALLBACK_MESSAGE
+      const redirected = goMiniProgramCouponPage(action.target)
+      messageRef.value = redirected ? '' : fallbackMessage || CLAIM_SUCCESS_COUPON_FALLBACK_MESSAGE
       return redirected
     }
 
@@ -1796,10 +1839,19 @@ export function useP1Activity(options = {}) {
     const isGift = reward.reward_type === 'gift_lottery_qualification'
     const isGiftAvailable = isGift && ['qualified', 'unused'].includes(reward.status)
     const isCouponAvailable = !isGift && reward.status === 'unused'
+    const isCouponUnclaimed = !isGift && reward.status === 'unclaimed'
 
     if (isGift && !isGiftAvailable) {
       trackEvent('reward_not_qualified_click')
       p6ActionMessage.value = '暂未达标：分享5个好友，或累计点亮7天后可使用985和牛礼盒抽奖资格。'
+      return
+    }
+
+    if (isCouponUnclaimed) {
+      trackEvent('reward_unclaimed_click', {
+        reward_code: getP6RewardCode(reward),
+      })
+      p6ActionMessage.value = '请先完成抽签并领取成功，成功后这里会变为去使用。'
       return
     }
 
@@ -1810,16 +1862,17 @@ export function useP1Activity(options = {}) {
 
     trackEvent('reward_use_click')
     if (isGift) {
+      p6ActionMessage.value = '正在查询大奖资格...'
       openP8Prize()
       return
     }
 
-    if (backendEnabled && runConfiguredAction(reward.action, p6ActionMessage, '券包入口暂未开放，请稍后再试。')) {
+    if (backendEnabled && runConfiguredAction(reward.action, p6ActionMessage, '已领取，请前往小程序我的优惠券查看。')) {
       trackEvent('reward_use_redirect_success')
       return
     }
 
-    p6ActionMessage.value = '券包入口暂未开放，请稍后再试。'
+    p6ActionMessage.value = '已领取，请前往小程序我的优惠券查看。'
     trackEvent('reward_use_redirect_fail')
   }
 
@@ -1841,11 +1894,11 @@ export function useP1Activity(options = {}) {
     trackEvent('product_recommend_redirect_fail')
   }
 
-  const completeShare = async () => {
+  const completeShare = async (shareChannel = 'wechat') => {
     if (backendEnabled) {
       try {
         const token = await ensureSession()
-        const result = await apiClient.recordShare({ session_token: token, share_channel: 'wechat' })
+        const result = await apiClient.recordShare({ session_token: token, share_channel: shareChannel })
         applyDailyState(result.daily_state)
         trackEvent(result.reward_granted ? 'share_chance_add_success' : 'share_chance_limit_reached', {
           share_token: result.share_token,

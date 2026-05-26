@@ -33,7 +33,8 @@ class MysqlPrepareScriptTests(unittest.TestCase):
         self.assertIn("reward_claim_record", table_names)
         self.assertIn("tracking_event", table_names)
         self.assertIn("coupon_issue_config", table_names)
-        self.assertEqual(len(table_names), 17)
+        self.assertIn("grand_prize_draw_config", table_names)
+        self.assertEqual(len(table_names), 18)
 
     def test_build_bootstrap_sql_is_safe_for_dry_run_and_masks_password(self):
         root_dir = Path(__file__).resolve().parents[2]

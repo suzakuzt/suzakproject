@@ -13,6 +13,11 @@ from ..services.hermes_coupon_client import HermesCouponClient, HermesCouponErro
 
 
 DEFAULT_ACTIVITY_CODE = "gaokao_lucky_sign_2026"
+GRAND_PRIZE_DRAW_TIME = "2026-06-18 10:00"
+GRAND_PRIZE_DRAW_TIME_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$")
+GRAND_PRIZE_LOTTERY_SUFFIX_MIN = 100000
+GRAND_PRIZE_LOTTERY_SUFFIX_RANGE = 900000
+GRAND_PRIZE_LOTTERY_MAX_ATTEMPTS = 64
 MOBILE_PATTERN = re.compile(r"^1[3-9]\d{9}$")
 P5_RANDOM_REWARD_CODES = ("coupon_10", "coupon_20", "coupon_30", "discount_9", "discount_75")
 _hermes_coupon_client: HermesCouponClient | None = None
@@ -280,7 +285,7 @@ def claim_benefit(payload: dict[str, Any]) -> dict[str, Any]:
 
             issue_config = _get_coupon_issue_config(conn, session["activity_code"], reward_code)
             claim_id = int(existing["id"])
-            conn.execute(
+            cursor = conn.execute(
                 """
                 UPDATE reward_claim_record
                 SET receiver_mobile = ?,
@@ -291,9 +296,17 @@ def claim_benefit(payload: dict[str, Any]) -> dict[str, Any]:
                     coupon_issue_error = NULL,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
+                  AND NOT (claim_status = 'pending' AND coupon_issue_status = 'pending')
+                  AND NOT (claim_status = 'success' AND coupon_issue_status = 'issued')
                 """,
                 (mobile, masked_mobile, claim_token, claim_id),
             )
+            if cursor.rowcount != 1:
+                conn.rollback()
+                current = fetch_one(conn, "SELECT * FROM reward_claim_record WHERE id = ?", (claim_id,))
+                if current and current.get("coupon_issue_status") == "issued" and current.get("claim_status") == "success":
+                    return _format_claim_result(current, reward, _get_p5_reward_image_url(conn, session["activity_code"], reward))
+                raise ApiError(409, "领取处理中，请稍后查看")
             conn.commit()
         else:
             claim_no = f"CL{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6].upper()}"
@@ -526,8 +539,8 @@ def get_reward_center(session_token: str) -> dict[str, Any]:
         claimed = fetch_all(
             conn,
             """
-            SELECT c.id AS claim_id, c.claim_status, c.claim_no, c.created_at AS claim_created_at,
-                   c.use_status,
+            SELECT c.id AS claim_id, c.claim_status, c.claim_no, c.claim_token, c.created_at AS claim_created_at,
+                   c.use_status, c.coupon_issue_status,
                    r.reward_code, r.reward_type, r.reward_name, r.reward_title, r.reward_desc, r.reward_amount_text,
                    r.reward_image_url, r.button_text, r.action_type, r.action_target, r.ext_json
             FROM reward_claim_record c
@@ -536,8 +549,9 @@ def get_reward_center(session_token: str) -> dict[str, Any]:
             WHERE c.activity_code = ?
               AND c.user_id = ?
               AND c.claim_status = 'success'
+              AND (r.reward_type NOT IN ('coupon', 'discount_coupon') OR c.coupon_issue_status = 'issued')
               AND r.is_grand_prize = 0
-            ORDER BY r.sort_order ASC, c.created_at ASC
+            ORDER BY r.sort_order ASC, c.created_at DESC, c.id DESC
             """,
             (session["activity_code"], session["user_id"]),
         )
@@ -578,22 +592,113 @@ def get_reward_center(session_token: str) -> dict[str, Any]:
         }
 
 
+def get_grand_prize_draw_config(activity_code: str = DEFAULT_ACTIVITY_CODE) -> dict[str, Any]:
+    with connection() as conn:
+        _get_activity_config(conn, activity_code)
+        config = _get_grand_prize_draw_config_row(conn, activity_code)
+        summary = _summarize_grand_prize_draw(conn, activity_code, config["winning_lottery_nos"])
+        return {
+            "activity_code": activity_code,
+            "draw_enabled": config["draw_enabled"],
+            "draw_time": config["draw_time"],
+            "winning_lottery_nos": config["winning_lottery_nos"],
+            "configured_by": config.get("configured_by"),
+            "remark": config.get("remark"),
+            "updated_at": config.get("updated_at"),
+            **summary,
+        }
+
+
+def save_grand_prize_draw_config(payload: dict[str, Any]) -> dict[str, Any]:
+    activity_code = payload.get("activity_code") or DEFAULT_ACTIVITY_CODE
+    draw_enabled = bool(payload.get("draw_enabled"))
+    winning_lottery_nos = _normalize_grand_prize_lottery_nos(payload.get("winning_lottery_nos"))
+    configured_by = payload.get("configured_by")
+    remark = payload.get("remark")
+
+    with connection() as conn:
+        _get_activity_config(conn, activity_code)
+        existing_config = _get_grand_prize_draw_config_row(conn, activity_code)
+        draw_time = _normalize_grand_prize_draw_time(payload.get("draw_time") or existing_config.get("draw_time"))
+        conn.execute(
+            """
+            INSERT INTO grand_prize_draw_config (
+              activity_code, draw_enabled, draw_time, winning_lottery_nos, configured_by, remark
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(activity_code) DO UPDATE SET
+              draw_enabled = excluded.draw_enabled,
+              draw_time = excluded.draw_time,
+              winning_lottery_nos = excluded.winning_lottery_nos,
+              configured_by = excluded.configured_by,
+              remark = excluded.remark,
+              updated_at = CURRENT_TIMESTAMP
+            """,
+            (
+                activity_code,
+                1 if draw_enabled else 0,
+                draw_time,
+                json.dumps(winning_lottery_nos, ensure_ascii=False),
+                configured_by,
+                remark,
+            ),
+        )
+        summary = _apply_grand_prize_draw_config(conn, activity_code, draw_enabled, winning_lottery_nos)
+        saved = _get_grand_prize_draw_config_row(conn, activity_code)
+        conn.commit()
+        return {
+            "activity_code": activity_code,
+            "draw_enabled": saved["draw_enabled"],
+            "draw_time": saved["draw_time"],
+            "winning_lottery_nos": saved["winning_lottery_nos"],
+            "configured_by": saved.get("configured_by"),
+            "remark": saved.get("remark"),
+            "updated_at": saved.get("updated_at"),
+            **summary,
+        }
+
+
 def get_grand_prize_detail(session_token: str) -> dict[str, Any]:
     with connection() as conn:
         session = _get_session(conn, session_token)
         config = _get_activity_config(conn, session["activity_code"])
         progress = _refresh_qualification(conn, config, int(session["user_id"]))
         qrcode = _get_asset(conn, session["activity_code"], "p8_wechat_qrcode")
+        gift = _get_gift_reward(conn, session["activity_code"])
+        gift_ext = _parse_json(gift.get("ext_json"), {})
         qualified = progress["gift_qualified"]
         lottery_no = progress.get("lottery_no") or ""
-        status_text = "待开奖" if qualified else "未达标"
+        draw_config = _get_grand_prize_draw_config_row(conn, session["activity_code"])
+        if _is_grand_prize_draw_publishable(draw_config):
+            _apply_grand_prize_draw_config(
+                conn,
+                session["activity_code"],
+                True,
+                draw_config["winning_lottery_nos"],
+            )
+        progress["lottery_status"] = _apply_grand_prize_draw_config_to_current_user(
+            conn,
+            session["activity_code"],
+            int(session["user_id"]),
+            qualified,
+            lottery_no,
+            progress.get("lottery_status"),
+            draw_config,
+        )
+        lottery_status = _format_grand_prize_lottery_status(
+            qualified,
+            progress.get("lottery_status"),
+            lottery_no,
+            draw_config["draw_time"],
+        )
         detail = {
             "activity_id": session["activity_code"],
             "qualify_status": progress["gift_status"],
             "qualified": qualified,
             "shared_count": progress["shared_count"],
             "lit_days": progress["lit_days"],
-            "button_text": "去使用" if qualified else "未达标",
+            "button_text": (gift_ext.get("unlocked_button_text") or "去查看") if qualified else (gift_ext.get("locked_button_text") or "未达标"),
+            "action": {"type": gift.get("action_type"), "target": gift.get("action_target") or ""},
             "lottery_no": lottery_no,
             "hero": {
                 "title": "985和牛礼盒抽奖资格",
@@ -611,14 +716,7 @@ def get_grand_prize_detail(session_token: str) -> dict[str, Any]:
                 {"id": "gift_qualification", "title": "礼盒资格", "desc": "已解锁" if qualified else "未达标"},
                 {"id": "draw_notice", "title": "开奖提醒", "desc": "企微通知"},
             ],
-            "lottery_status": {
-                "status": "pending" if qualified else "locked",
-                "status_text": status_text,
-                "draw_time_desc": "活动结束后 3 个工作日内统一开奖",
-                "notice": "中奖编号将在本页面与企微社群同步公示",
-                "publicity_title": "中奖公示",
-                "publicity_desc": "开奖后将在此更新",
-            },
+            "lottery_status": lottery_status,
             "wechat_group": {
                 "qrcode_url": qrcode.get("asset_url") if qrcode else "",
                 "qrcode_id": _parse_json(qrcode.get("ext_json") if qrcode else None, {}).get("qrcode_id", "grand_prize_wechat_default"),
@@ -628,6 +726,241 @@ def get_grand_prize_detail(session_token: str) -> dict[str, Any]:
         }
         conn.commit()
         return detail
+
+
+def _normalize_grand_prize_lottery_nos(raw_values: Any) -> list[str]:
+    if raw_values is None:
+        values: list[Any] = []
+    elif isinstance(raw_values, str):
+        values = re.split(r"[\s,，;；]+", raw_values)
+    else:
+        values = list(raw_values)
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        lottery_no = str(value or "").strip().upper()
+        if not lottery_no or lottery_no in seen:
+            continue
+        seen.add(lottery_no)
+        normalized.append(lottery_no)
+    return normalized
+
+
+def _normalize_grand_prize_draw_time(raw_value: Any) -> str:
+    value = str(raw_value or "").strip()
+    if not value:
+        return GRAND_PRIZE_DRAW_TIME
+    if not GRAND_PRIZE_DRAW_TIME_PATTERN.match(value):
+        raise ApiError(400, "draw_time must use YYYY-MM-DD HH:mm")
+    try:
+        return datetime.strptime(value, "%Y-%m-%d %H:%M").strftime("%Y-%m-%d %H:%M")
+    except ValueError as exc:
+        raise ApiError(400, "draw_time must use YYYY-MM-DD HH:mm") from exc
+
+
+def _is_grand_prize_draw_publishable(config: dict[str, Any]) -> bool:
+    if config.get("draw_enabled"):
+        return True
+    draw_time = _normalize_grand_prize_draw_time(config.get("draw_time"))
+    return datetime.now() >= datetime.strptime(draw_time, "%Y-%m-%d %H:%M")
+
+
+def _parse_grand_prize_winner_nos(raw_value: str | None) -> list[str]:
+    if not raw_value:
+        return []
+    try:
+        decoded = json.loads(raw_value)
+    except json.JSONDecodeError:
+        return _normalize_grand_prize_lottery_nos(raw_value)
+    return _normalize_grand_prize_lottery_nos(decoded)
+
+
+def _get_grand_prize_draw_config_row(conn, activity_code: str) -> dict[str, Any]:
+    row = fetch_one(conn, "SELECT * FROM grand_prize_draw_config WHERE activity_code = ?", (activity_code,))
+    if row is None:
+        return {
+            "exists": False,
+            "draw_enabled": False,
+            "draw_time": GRAND_PRIZE_DRAW_TIME,
+            "winning_lottery_nos": [],
+            "configured_by": None,
+            "remark": None,
+            "updated_at": None,
+        }
+    return {
+        "exists": True,
+        "draw_enabled": bool(row.get("draw_enabled")),
+        "draw_time": _normalize_grand_prize_draw_time(row.get("draw_time")),
+        "winning_lottery_nos": _parse_grand_prize_winner_nos(row.get("winning_lottery_nos")),
+        "configured_by": row.get("configured_by"),
+        "remark": row.get("remark"),
+        "updated_at": row.get("updated_at"),
+    }
+
+
+def _summarize_grand_prize_draw(conn, activity_code: str, winning_lottery_nos: list[str]) -> dict[str, Any]:
+    qualified_rows = fetch_all(
+        conn,
+        """
+        SELECT lottery_no, lottery_status
+        FROM grand_prize_qualification
+        WHERE activity_code = ?
+          AND qualify_status = 'qualified'
+          AND COALESCE(lottery_no, '') <> ''
+        """,
+        (activity_code,),
+    )
+    qualified_nos = {str(row["lottery_no"]) for row in qualified_rows}
+    winner_count = sum(1 for row in qualified_rows if row.get("lottery_status") == "won")
+    not_winner_count = sum(1 for row in qualified_rows if row.get("lottery_status") == "not_won")
+    unknown_lottery_nos = [lottery_no for lottery_no in winning_lottery_nos if lottery_no not in qualified_nos]
+    return {
+        "qualified_count": len(qualified_rows),
+        "winner_count": winner_count,
+        "not_winner_count": not_winner_count,
+        "unknown_lottery_nos": unknown_lottery_nos,
+    }
+
+
+def _apply_grand_prize_draw_config(
+    conn,
+    activity_code: str,
+    draw_enabled: bool,
+    winning_lottery_nos: list[str],
+) -> dict[str, Any]:
+    if draw_enabled:
+        conn.execute(
+            """
+            UPDATE grand_prize_qualification
+            SET lottery_status = 'not_won',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE activity_code = ?
+              AND qualify_status = 'qualified'
+              AND COALESCE(lottery_no, '') <> ''
+            """,
+            (activity_code,),
+        )
+        if winning_lottery_nos:
+            placeholders = ", ".join("?" for _ in winning_lottery_nos)
+            conn.execute(
+                f"""
+                UPDATE grand_prize_qualification
+                SET lottery_status = 'won',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE activity_code = ?
+                  AND qualify_status = 'qualified'
+                  AND lottery_no IN ({placeholders})
+                """,
+                (activity_code, *winning_lottery_nos),
+            )
+    else:
+        conn.execute(
+            """
+            UPDATE grand_prize_qualification
+            SET lottery_status = 'pending',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE activity_code = ?
+              AND qualify_status = 'qualified'
+              AND lottery_status IN ('drawn', 'won', 'not_won')
+            """,
+            (activity_code,),
+        )
+
+    return _summarize_grand_prize_draw(conn, activity_code, winning_lottery_nos)
+
+
+def _apply_grand_prize_draw_config_to_current_user(
+    conn,
+    activity_code: str,
+    user_id: int,
+    qualified: bool,
+    lottery_no: str,
+    raw_status: str | None,
+    config: dict[str, Any] | None = None,
+) -> str | None:
+    if not qualified or not lottery_no:
+        return raw_status
+
+    config = config or _get_grand_prize_draw_config_row(conn, activity_code)
+    if not config["exists"]:
+        return raw_status
+
+    target_status = "pending"
+    if _is_grand_prize_draw_publishable(config):
+        target_status = "won" if lottery_no in set(config["winning_lottery_nos"]) else "not_won"
+
+    if raw_status != target_status:
+        conn.execute(
+            """
+            UPDATE grand_prize_qualification
+            SET lottery_status = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE activity_code = ?
+              AND user_id = ?
+            """,
+            (target_status, activity_code, user_id),
+        )
+    return target_status
+
+
+def _format_grand_prize_lottery_status(qualified: bool, raw_status: str | None, lottery_no: str, draw_time: str) -> dict[str, Any]:
+    status = raw_status or ("pending" if qualified else "locked")
+    base = {
+        "status": "locked" if not qualified else status,
+        "draw_time_desc": draw_time,
+        "notice": "中奖编号将在本页面与企微社群同步公示",
+        "publicity_title": "中奖公示",
+        "is_drawn": False,
+        "is_winner": False,
+    }
+
+    if not qualified:
+        return {
+            **base,
+            "status_text": "未达标",
+            "publicity_desc": "解锁抽奖资格后可查看开奖结果",
+        }
+
+    if status == "won":
+        return {
+            **base,
+            "status": "won",
+            "status_text": "已开奖",
+            "publicity_title": "恭喜中奖",
+            "publicity_desc": f"您的编号 {lottery_no} 已中奖，请留意企微通知",
+            "is_drawn": True,
+            "is_winner": True,
+        }
+
+    if status == "not_won":
+        return {
+            **base,
+            "status": "not_won",
+            "status_text": "已开奖",
+            "publicity_title": "已开奖",
+            "publicity_desc": f"您的编号 {lottery_no} 未中奖，感谢参与",
+            "is_drawn": True,
+            "is_winner": False,
+        }
+
+    if status == "drawn":
+        return {
+            **base,
+            "status": "drawn",
+            "status_text": "已开奖",
+            "publicity_title": "已开奖",
+            "publicity_desc": "结果已公示，请以企微通知为准",
+            "is_drawn": True,
+            "is_winner": False,
+        }
+
+    return {
+        **base,
+        "status": "waiting_draw" if status == "waiting_draw" else "pending",
+        "status_text": "待开奖",
+        "publicity_desc": "开奖后将在此更新",
+    }
 
 
 def get_rules_detail(activity_code: str = DEFAULT_ACTIVITY_CODE) -> dict[str, Any]:
@@ -1018,6 +1351,11 @@ def _complete_share_assist(conn, session: dict[str, Any], draw_id: int) -> None:
 
 def _refresh_qualification(conn, config: dict[str, Any], user_id: int) -> dict[str, Any]:
     activity_code = config["activity_code"]
+    existing = fetch_one(
+        conn,
+        "SELECT lottery_no, lottery_suffix, lottery_status FROM grand_prize_qualification WHERE activity_code = ? AND user_id = ?",
+        (activity_code, user_id),
+    )
     lit_days = _count_lit_days(conn, activity_code, user_id)
     shared_count = _count_share_assists(conn, activity_code, user_id)
     share_target = int(config["share_target"])
@@ -1027,7 +1365,17 @@ def _refresh_qualification(conn, config: dict[str, Any], user_id: int) -> dict[s
     qualified = by_share or by_checkin
     qualify_type = "both" if by_share and by_checkin else "share" if by_share else "checkin" if by_checkin else "none"
     status = "qualified" if qualified else "not_qualified"
-    lottery_no = f"GP{datetime.now().strftime('%Y%m%d')}{user_id:06d}" if qualified else None
+    existing_lottery_no = (existing.get("lottery_no") if existing else None) or ""
+    existing_lottery_suffix = (existing.get("lottery_suffix") if existing else None) or ""
+    replace_existing_lottery = qualified and _is_predictable_legacy_lottery_no(existing_lottery_no, user_id)
+    lottery_no = None
+    lottery_suffix = None
+    if qualified:
+        if existing_lottery_no and not replace_existing_lottery:
+            lottery_no = existing_lottery_no
+            lottery_suffix = existing_lottery_suffix or existing_lottery_no[-6:]
+        else:
+            lottery_no, lottery_suffix = _generate_grand_prize_lottery_no(conn, activity_code)
     completed_days = list(range(1, min(lit_days, light_target) + 1))
     snapshot = {
         "shared_count": shared_count,
@@ -1039,16 +1387,23 @@ def _refresh_qualification(conn, config: dict[str, Any], user_id: int) -> dict[s
         """
         INSERT INTO grand_prize_qualification (
           activity_code, user_id, qualify_status, qualify_type, shared_count, lit_days,
-          lottery_no, lottery_status, qrcode_id, qrcode_url, qualified_at, qualification_snapshot_json
+          lottery_no, lottery_suffix, lottery_status, qrcode_id, qrcode_url, qualified_at, qualification_snapshot_json
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 'grand_prize_wechat_default', '/assets/p8/qrcode_grand_prize_wechat.png',
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'grand_prize_wechat_default', '/assets/p8/qrcode_grand_prize_wechat.png',
                 CASE WHEN ? = 'qualified' THEN CURRENT_TIMESTAMP ELSE NULL END, ?)
         ON CONFLICT(activity_code, user_id) DO UPDATE SET
           qualify_status = excluded.qualify_status,
           qualify_type = excluded.qualify_type,
           shared_count = excluded.shared_count,
           lit_days = excluded.lit_days,
-          lottery_no = COALESCE(grand_prize_qualification.lottery_no, excluded.lottery_no),
+          lottery_no = CASE
+            WHEN ? = 1 OR COALESCE(grand_prize_qualification.lottery_no, '') = '' THEN excluded.lottery_no
+            ELSE grand_prize_qualification.lottery_no
+          END,
+          lottery_suffix = CASE
+            WHEN ? = 1 OR COALESCE(grand_prize_qualification.lottery_no, '') = '' THEN excluded.lottery_suffix
+            ELSE COALESCE(NULLIF(grand_prize_qualification.lottery_suffix, ''), excluded.lottery_suffix)
+          END,
           qualified_at = CASE
             WHEN grand_prize_qualification.qualified_at IS NULL AND excluded.qualify_status = 'qualified' THEN CURRENT_TIMESTAMP
             ELSE grand_prize_qualification.qualified_at
@@ -1064,8 +1419,11 @@ def _refresh_qualification(conn, config: dict[str, Any], user_id: int) -> dict[s
             shared_count,
             lit_days,
             lottery_no,
+            lottery_suffix,
             status,
             json.dumps(snapshot, ensure_ascii=False),
+            1 if replace_existing_lottery else 0,
+            1 if replace_existing_lottery else 0,
         ),
     )
     saved = fetch_one(
@@ -1084,8 +1442,33 @@ def _refresh_qualification(conn, config: dict[str, Any], user_id: int) -> dict[s
         "qualify_status": status,
         "qualify_type": qualify_type,
         "lottery_no": saved.get("lottery_no") if saved else lottery_no,
+        "lottery_status": saved.get("lottery_status") if saved else "pending",
         "progress_desc": "分享5个好友，或累计点亮7天，赢取985和牛礼盒抽奖资格！",
     }
+
+
+def _is_predictable_legacy_lottery_no(lottery_no: str, user_id: int) -> bool:
+    return bool(re.fullmatch(rf"GP\d{{8}}{user_id:06d}", lottery_no or ""))
+
+
+def _generate_grand_prize_lottery_no(conn, activity_code: str) -> tuple[str, str]:
+    date_part = datetime.now().strftime("%Y%m%d")
+    for _ in range(GRAND_PRIZE_LOTTERY_MAX_ATTEMPTS):
+        suffix = f"{GRAND_PRIZE_LOTTERY_SUFFIX_MIN + secrets.randbelow(GRAND_PRIZE_LOTTERY_SUFFIX_RANGE):06d}"
+        existing = fetch_one(
+            conn,
+            """
+            SELECT id
+            FROM grand_prize_qualification
+            WHERE lottery_suffix = ?
+               OR lottery_no = ?
+            LIMIT 1
+            """,
+            (suffix, f"GP{date_part}{suffix}"),
+        )
+        if existing is None:
+            return f"GP{date_part}{suffix}", suffix
+    raise ApiError(409, "grand prize lottery number pool exhausted, please retry")
 
 
 def _count_lit_days(conn, activity_code: str, user_id: int) -> int:
@@ -1217,13 +1600,17 @@ def _build_p2_result(result: dict[str, Any]) -> dict[str, Any]:
     main_columns = ext.get("main_text_columns")
     if not main_columns:
         main_columns = _split_lines(result.get("main_text"))
+    sign_type = ext.get("sign_type") or result.get("result_title")
+    main_text = result.get("main_text") or ""
     return {
         "result_code": result["result_code"],
-        "signType": ext.get("sign_type") or result.get("result_title"),
+        "signType": sign_type,
         "signLevel": result.get("result_level"),
+        "fortuneHeadline": ext.get("fortune_headline") or sign_type,
+        "fortuneHint": ext.get("fortune_hint") or main_text,
         "mainTextColumns": main_columns,
-        "goodFor": result.get("good_text"),
-        "avoid": result.get("avoid_text"),
+        "goodFor": result.get("good_text") or "",
+        "avoid": result.get("avoid_text") or "",
         "explainText": ext.get("explain_text") or result.get("explain_content"),
     }
 
@@ -1462,7 +1849,10 @@ def _format_reward_for_p6(row: dict[str, Any]) -> dict[str, Any]:
     claim_identity = row.get("claim_no") or row.get("claim_id")
     reward_id = f"{row['reward_code']}_{claim_identity}" if is_claimed and claim_identity else row["reward_code"]
     status = row.get("use_status") or ("unused" if is_claimed else "unclaimed")
-    button_text = "未领取" if status == "unclaimed" else "去领取"
+    button_text = "去领取" if status == "unclaimed" else "去使用"
+    action_target = row.get("action_target") or ""
+    if is_claimed:
+        action_target = _append_claim_identity(action_target, row.get("claim_token"), row.get("claim_no"))
     return {
         "reward_code": row["reward_code"],
         "reward_id": reward_id,
@@ -1473,12 +1863,13 @@ def _format_reward_for_p6(row: dict[str, Any]) -> dict[str, Any]:
         "status": status,
         "button_text": button_text,
         "image_url": row.get("reward_image_url") or "",
-        "action": {"type": row.get("action_type"), "target": row.get("action_target") or ""},
+        "action": {"type": row.get("action_type"), "target": action_target},
     }
 
 
 def _format_gift_for_p6(gift: dict[str, Any], progress: dict[str, Any]) -> dict[str, Any]:
     qualified = progress["gift_qualified"]
+    ext = _parse_json(gift.get("ext_json"), {})
     return {
         "reward_code": gift["reward_code"],
         "reward_id": gift["reward_code"],
@@ -1486,18 +1877,8 @@ def _format_gift_for_p6(gift: dict[str, Any], progress: dict[str, Any]) -> dict[
         "title": gift.get("reward_title") or gift.get("reward_name"),
         "desc": gift.get("reward_desc") or "抽奖资格",
         "status": "qualified" if qualified else "not_qualified",
-        "button_text": "去使用" if qualified else "未达标",
-        "action": {"type": "gift_qualification_detail", "target": "/activity/grand-prize"},
-    }
-    return {
-        "reward_code": gift["reward_code"],
-        "reward_id": gift["reward_code"],
-        "reward_type": "gift_lottery_qualification",
-        "title": gift.get("reward_title") or gift.get("reward_name"),
-        "desc": gift.get("reward_desc") or "抽奖资格",
-        "status": "qualified" if qualified else "not_qualified",
-        "button_text": "去领取" if qualified else "未达标",
-        "action": {"type": "gift_qualification_detail", "target": "/activity/grand-prize"},
+        "button_text": (ext.get("unlocked_button_text") or "去查看") if qualified else (ext.get("locked_button_text") or "未达标"),
+        "action": {"type": gift.get("action_type"), "target": gift.get("action_target") or ""},
     }
 
 

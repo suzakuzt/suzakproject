@@ -1,0 +1,8 @@
+PRAGMA foreign_keys = ON;
+
+BEGIN TRANSACTION;
+
+ALTER TABLE grand_prize_draw_config
+  ADD COLUMN draw_time TEXT NOT NULL DEFAULT '2026-06-18 10:00';
+
+COMMIT;

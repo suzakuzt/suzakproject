@@ -46,6 +46,8 @@ http://127.0.0.1:8000/docs
 | `GET /api/poster/image/{poster_id}` | 读取已保存海报图片 |
 | `GET /api/reward/center/detail` | 我的奖励页数据 |
 | `GET /api/grand-prize/qualification/detail` | 985 礼盒资格页数据 |
+| `GET /api/admin/grand-prize/draw-config` | Admin grand-prize draw switch and configured winner lottery numbers |
+| `POST /api/admin/grand-prize/draw-config` | Admin save grand-prize draw switch and winner lottery numbers |
 | `GET /api/activity/rules/detail` | 活动规则 |
 | `POST /api/tracking/event` | 埋点入库 |
 
