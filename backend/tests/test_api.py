@@ -1452,6 +1452,32 @@ class ActivityApiFlowTests(unittest.TestCase):
         self.assertEqual(tracking_response.status_code, 200)
         self.assertEqual(tracking_response.json()["success"], True)
 
+    def test_tracking_endpoint_accepts_iso_client_time(self):
+        import sqlite3
+
+        session = self._create_session()
+
+        response = self.client.post(
+            "/api/tracking/event",
+            json={
+                "session_token": session["session_token"],
+                "page_code": "p1",
+                "event_name": "activity_home_view",
+                "client_time": "2026-05-26T14:55:55.020Z",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["success"], True)
+
+        conn = sqlite3.connect(self.database_path)
+        try:
+            row = conn.execute("SELECT client_time FROM tracking_event ORDER BY id DESC LIMIT 1").fetchone()
+        finally:
+            conn.close()
+
+        self.assertEqual(row[0], "2026-05-26 14:55:55")
+
     def test_poster_save_persists_png_and_returns_readable_image_url(self):
         session = self._create_session()
         image_data_url = (

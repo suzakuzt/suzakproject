@@ -1096,7 +1096,7 @@ def record_tracking_event(payload: dict[str, Any]) -> dict[str, Any]:
                 payload.get("page_code"),
                 payload["event_name"],
                 json.dumps(payload.get("event_payload") or {}, ensure_ascii=False),
-                payload.get("client_time"),
+                _normalize_client_time(payload.get("client_time")),
             ),
         )
         event_id = last_insert_id(conn, cursor)
@@ -1106,6 +1106,19 @@ def record_tracking_event(payload: dict[str, Any]) -> dict[str, Any]:
 
 def _today() -> str:
     return date.today().isoformat()
+
+
+def _normalize_client_time(raw_value: Any) -> str | None:
+    value = str(raw_value or "").strip()
+    if not value:
+        return None
+
+    normalized = value.replace("Z", "+00:00") if value.endswith("Z") else value
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    return parsed.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _get_activity_config(conn, activity_code: str) -> dict[str, Any]:
