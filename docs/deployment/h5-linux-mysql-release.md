@@ -2,10 +2,11 @@
 
 ## Release
 
-- Current release date: 2026-05-27
-- Current Git commit: a3abf89d5f62961828e3d367dbabed8a09677119
-- H5 external URL: https://raised-kay-corners-config.trycloudflare.com/activity/home
-- Health check URL: https://raised-kay-corners-config.trycloudflare.com/api/health
+- Release date: 2026-05-27
+- Server-verified release baseline commit: `4c0d258f19f39c0cfd46f1065940c8403f2ff9db`
+- Check the currently deployed revision with `git log -1 --oneline` on the server before each release.
+- H5 external URL: `https://raised-kay-corners-config.trycloudflare.com/activity/home`
+- Health check URL: `https://raised-kay-corners-config.trycloudflare.com/api/health`
 
 ## Runtime
 
@@ -19,22 +20,23 @@
 ## Environment
 
 - `GAOKAO_H5_DB_ENGINE=mysql`
-- `GAOKAO_H5_MYSQL_HOST=已配置`
-- `GAOKAO_H5_MYSQL_PORT=已配置`
-- `GAOKAO_H5_MYSQL_DATABASE=已配置`
-- `GAOKAO_H5_MYSQL_USER=已配置`
-- `GAOKAO_H5_MYSQL_PASSWORD=已配置`
-- `PORTAL_BASE_URL=已配置`
-- `PORTAL_USERNAME=已配置`
-- `PORTAL_PASSWORD=已配置`
-- `GAOKAO_H5_ADMIN_TOKEN=已配置`
+- `GAOKAO_H5_MYSQL_HOST`: configured on server, redacted from Git
+- `GAOKAO_H5_MYSQL_PORT`: configured on server, redacted from Git
+- `GAOKAO_H5_MYSQL_DATABASE`: configured on server, redacted from Git
+- `GAOKAO_H5_MYSQL_USER`: configured on server, redacted from Git
+- `GAOKAO_H5_MYSQL_PASSWORD`: configured on server, redacted from Git
+- `PORTAL_BASE_URL`: configured on server, redacted from Git
+- `PORTAL_USERNAME`: configured on server, redacted from Git
+- `PORTAL_PASSWORD`: configured on server, redacted from Git
+- `GAOKAO_H5_ADMIN_TOKEN`: configured on server, redacted from Git
+- Do not commit `backend/.env`, runtime logs, tokens, database passwords, portal credentials, or certificate private keys.
 
 ## Verified
 
 - MySQL health check verified through `/api/health`.
 - `tracking/event` MySQL client time normalization fix is committed in `c31d068`.
 - Hermes coupon issuing has been verified through the backend claim flow.
-- Grand prize admin draw config now requires `GAOKAO_H5_ADMIN_TOKEN`.
+- Grand prize admin draw config requires `GAOKAO_H5_ADMIN_TOKEN`.
 
 ## Mini Program
 
@@ -59,6 +61,7 @@
    ```bash
    pkill -f "uvicorn backend.app.main:app"
    cd /root/suzakproject
+   mkdir -p runtime
    setsid .venv/bin/uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 > runtime/backend.log 2>&1 < /dev/null &
    ```
 6. Reload Nginx if the static path or Nginx config changed:

@@ -1,11 +1,10 @@
-import sqlite3
 from typing import Any
 
 from .database import fetch_one
 
 
 class ActivityRepository:
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: Any):
         self.conn = conn
 
     def get_activity_state_config(self, activity_code: str) -> dict[str, Any]:

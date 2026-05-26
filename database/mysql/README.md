@@ -1,63 +1,58 @@
-# MySQL 脚本说明
+# MySQL Scripts
 
-这套脚本用于上线前准备 MySQL 库。它不会改变当前 SQLite 本地测试流程。
+These scripts prepare the MySQL application database used by the Linux staging/production runtime. SQLite remains the default for local development and unit tests.
 
-## 1. 脚本顺序
+## Script Order
 
-| 顺序 | 文件 | 说明 |
+| Order | File | Purpose |
 | --- | --- | --- |
-| 1 | `001_init_activity_tables.sql` | 创建 18 张活动业务表 |
-| 2 | `002_seed_basic_mock_config.sql` | 灌入基础活动配置、签文、产品、券、二维码 |
+| 1 | `001_init_activity_tables.sql` | Create 18 activity business tables |
+| 2 | `002_seed_basic_mock_config.sql` | Seed activity config, draw results, products, coupon rewards, assets, rules, and Hermes coupon issue config |
 
-`001_init_activity_tables.sql` 已包含 SQLite 后续迁移中的关键字段：每日状态、签文快照、手机号领取、claim_token、发券状态、大奖资格快照等。
+`001_init_activity_tables.sql` includes the fields needed by the current activity flow, including daily state, draw snapshots, mobile claim fields, `claim_token`, coupon issue state, grand-prize qualification, grand-prize draw config, and tracking events.
 
-## 2. 推荐执行方式
+## Recommended Execution
 
-先 dry-run：
+Dry run:
 
 ```powershell
-$env:GAOKAO_H5_MYSQL_HOST="127.0.0.1"
-$env:GAOKAO_H5_MYSQL_PORT="3306"
-$env:GAOKAO_H5_MYSQL_USER="root"
-$env:GAOKAO_H5_MYSQL_PASSWORD="your-password"
-$env:GAOKAO_H5_MYSQL_DATABASE="gaokao_h5"
-python scripts/prepare_mysql.py
+python scripts/prepare_mysql.py --skip-create-database
 ```
 
-确认输出 SQL 和库名无误后执行：
+Execute against an existing managed application database:
+
+```powershell
+python scripts/prepare_mysql.py --skip-create-database --execute
+```
+
+For a local MySQL database where database creation is allowed:
 
 ```powershell
 python scripts/prepare_mysql.py --execute
 ```
 
-也可以手动进入 MySQL 后执行：
+## Environment Variables
 
-```sql
-SOURCE database/mysql/001_init_activity_tables.sql;
-SOURCE database/mysql/002_seed_basic_mock_config.sql;
-```
+| Variable | Purpose |
+| --- | --- |
+| `GAOKAO_H5_MYSQL_HOST` | MySQL host |
+| `GAOKAO_H5_MYSQL_PORT` | MySQL port, usually `3306` |
+| `GAOKAO_H5_MYSQL_USER` | MySQL user |
+| `GAOKAO_H5_MYSQL_PASSWORD` | MySQL password, configured outside Git |
+| `GAOKAO_H5_MYSQL_DATABASE` | Target database name |
+| `GAOKAO_H5_MYSQL_CLIENT` | MySQL client command, defaults to `mysql` |
 
-## 3. 环境变量
+## Runtime Notes
 
-| 变量 | 默认值 | 说明 |
-| --- | --- | --- |
-| `GAOKAO_H5_MYSQL_HOST` | `127.0.0.1` | MySQL 地址 |
-| `GAOKAO_H5_MYSQL_PORT` | `3306` | MySQL 端口 |
-| `GAOKAO_H5_MYSQL_USER` | `root` | 用户名 |
-| `GAOKAO_H5_MYSQL_PASSWORD` | 空 | 密码，建议用环境变量传 |
-| `GAOKAO_H5_MYSQL_DATABASE` | `gaokao_h5` | 目标库名 |
-| `GAOKAO_H5_MYSQL_CLIENT` | `mysql` | mysql 客户端命令 |
+- Enable MySQL in FastAPI with `GAOKAO_H5_DB_ENGINE=mysql`.
+- The runtime adapter is implemented in `backend/app/database.py`.
+- SQL `?` placeholders are translated to `%s` for PyMySQL.
+- `002_seed_basic_mock_config.sql` sets `NO_BACKSLASH_ESCAPES` for the session so JSON strings containing `\n` import correctly.
+- Do not expose MySQL port `3306` to the public internet.
 
-## 4. 当前约定
-
-- 字符集使用 `utf8mb4`。
-- 表数量为 18 张，与当前活动业务口径一致。
-- seed 包含 4 个 P2/P4 牛肉产品、5 个 P5 优惠券配置和 `coupon_issue_config` Hermes 发券配置。
-- 后端运行时当前仍使用 SQLite。上线切 MySQL 前，需要完成 MySQL 连接适配并跑接口冒烟。
-
-## 5. 脚本测试
+## Verification
 
 ```powershell
 python -m unittest backend.tests.test_prepare_mysql -v
-python scripts/prepare_mysql.py
+python scripts/prepare_mysql.py --skip-create-database
 ```

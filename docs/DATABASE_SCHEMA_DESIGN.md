@@ -1,72 +1,78 @@
-# 数据库结构和切换说明
+# Database Schema And Runtime
 
-当前开发库为 SQLite，默认路径是 `backend/data/gaokao_h5_dev.sqlite3`。MySQL 脚本已准备在 `database/mysql/`，表名和业务字段与 SQLite 口径一致。
+The project keeps SQLite for local development and automated tests, and uses MySQL for Linux staging/production by setting `GAOKAO_H5_DB_ENGINE=mysql`.
 
-## 1. 当前 SQLite 脚本
+## Runtime Selection
 
-| 脚本 | 作用 |
+Runtime database selection lives in `backend/app/database.py`.
+
+| Engine | How it is selected | Use case |
+| --- | --- | --- |
+| SQLite | Default, or `GAOKAO_H5_DB_ENGINE=sqlite` | Local development and unit tests |
+| MySQL | `GAOKAO_H5_DB_ENGINE=mysql` | Linux staging/production release |
+
+The service code uses `connection()`, `fetch_one()`, `fetch_all()`, `last_insert_id()`, and `is_mysql_connection()` from `backend/app/database.py` so the same business flow can run against either engine.
+
+## MySQL Scripts
+
+| Script | Purpose |
 | --- | --- |
-| `database/sqlite/001_init_activity_tables.sql` | 初始活动表、用户表、抽签表、分享表、领奖表、埋点表 |
-| `database/sqlite/002_seed_basic_mock_config.sql` | 本地活动配置、签文、牛肉产品、优惠券、二维码 |
-| `database/sqlite/003_optimize_activity_tables.sql` | 每日状态、签文快照、邀请状态、资格快照等优化字段 |
-| `database/sqlite/004_allow_duplicate_reward_claims_per_draw.sql` | 重建领奖表唯一约束，允许不同 draw 重复领同券 |
-| `database/sqlite/005_add_mobile_claim_fields.sql` | 手机号、claim_token、发券状态字段兼容迁移 |
+| `database/mysql/001_init_activity_tables.sql` | MySQL schema for activity, draw, sharing, coupon claim, grand-prize, poster metadata, and tracking tables |
+| `database/mysql/002_seed_basic_mock_config.sql` | Seed activity config, reward config, Hermes coupon issue config, draw result config, assets, and rules |
+| `scripts/prepare_mysql.py` | Generates or executes bootstrap SQL, validates database name, and can skip database creation for managed app databases |
 
-测试初始化当前主要执行 `001`、`002`、`003`、`004`。`005` 是兼容旧库补丁，字段已合入重建后的领奖表口径。
-
-## 2. MySQL 脚本
-
-| 脚本 | 作用 |
-| --- | --- |
-| `database/mysql/001_init_activity_tables.sql` | MySQL 版 16 张活动表，包含 SQLite 后续优化字段 |
-| `database/mysql/002_seed_basic_mock_config.sql` | MySQL 版基础活动配置和素材配置 |
-| `scripts/prepare_mysql.py` | 生成/执行建库 SQL，固定脚本顺序，校验库名 |
-
-dry-run：
+Dry run:
 
 ```powershell
-$env:GAOKAO_H5_MYSQL_HOST="127.0.0.1"
-$env:GAOKAO_H5_MYSQL_PORT="3306"
-$env:GAOKAO_H5_MYSQL_USER="root"
-$env:GAOKAO_H5_MYSQL_PASSWORD="your-password"
-$env:GAOKAO_H5_MYSQL_DATABASE="gaokao_h5"
-python scripts/prepare_mysql.py
+python scripts/prepare_mysql.py --skip-create-database
 ```
 
-执行：
+Execute:
 
 ```powershell
-python scripts/prepare_mysql.py --execute
+python scripts/prepare_mysql.py --skip-create-database --execute
 ```
 
-## 3. 表分组
+## SQLite Scripts
 
-| 分组 | 表 |
+| Script | Purpose |
 | --- | --- |
-| 活动配置 | `activity_config`、`activity_asset_config` |
-| 内容配置 | `draw_result_config`、`product_recommend_config`、`reward_config` |
-| 用户状态 | `activity_user`、`activity_session`、`user_daily_state` |
-| 抽签机会 | `draw_record`、`draw_chance_log`、`checkin_record` |
-| 分享助力 | `share_record`、`share_assist_record` |
-| 领奖大奖 | `reward_claim_record`、`grand_prize_qualification` |
-| 埋点 | `tracking_event` |
+| `database/sqlite/001_init_activity_tables.sql` | Local SQLite base schema |
+| `database/sqlite/002_seed_basic_mock_config.sql` | Local seed data |
+| `database/sqlite/003_optimize_activity_tables.sql` | Local compatibility migration |
+| `database/sqlite/004_allow_duplicate_reward_claims_per_draw.sql` | Rebuild claim uniqueness for per-draw repeat claims |
+| `database/sqlite/005_add_mobile_claim_fields.sql` | Legacy mobile claim compatibility migration |
+| `database/sqlite/006_add_coupon_issue_config.sql` | Legacy coupon issue config migration |
+| `database/sqlite/007_add_grand_prize_draw_config.sql` | Legacy grand-prize draw config migration |
 
-海报弹窗生成的 PNG 不写入业务数据库表。后端通过 `POST /api/poster/save` 校验 PNG data URL 后写入文件系统，默认目录为 `backend/data/posters/`，可用 `GAOKAO_H5_POSTER_DIR` 切换。保存成功、失败等状态通过 `tracking_event` 记录，MySQL 切换时不需要新增海报表。
+## Table Groups
 
-## 4. 关键约束
-
-| 表 | 关键约束 |
+| Group | Tables |
 | --- | --- |
-| `activity_user` | `UNIQUE(activity_code, user_key)` |
-| `activity_session` | `session_token` 唯一，保留 `source_share_token` |
-| `user_daily_state` | `UNIQUE(activity_code, user_id, biz_date)` |
-| `draw_record` | `draw_no` 唯一，保存签文和券快照 |
-| `share_record` | `share_token` 唯一，记录是否已加机会 |
-| `share_assist_record` | 同一 token + 好友只能助力一次 |
-| `reward_claim_record` | 同一用户、同一 draw、同一券只能领一次；`claim_token` 唯一 |
-| `grand_prize_qualification` | 同一用户同一活动一条资格记录 |
+| Activity config | `activity_config`, `activity_asset_config` |
+| Content config | `draw_result_config`, `product_recommend_config`, `reward_config`, `coupon_issue_config` |
+| User state | `activity_user`, `activity_session`, `user_daily_state` |
+| Draw chance | `draw_record`, `draw_chance_log`, `checkin_record` |
+| Sharing | `share_record`, `share_assist_record` |
+| Reward and grand prize | `reward_claim_record`, `grand_prize_qualification`, `grand_prize_draw_config` |
+| Tracking | `tracking_event` |
 
-## 5. 数据流
+Poster PNG files are stored on disk, not as database blobs. The backend writes them under `GAOKAO_H5_POSTER_DIR` or `backend/data/posters/`.
+
+## Key Constraints
+
+| Table | Constraint |
+| --- | --- |
+| `activity_user` | Unique per `activity_code` + `user_key` |
+| `activity_session` | Unique `session_token` |
+| `user_daily_state` | Unique per `activity_code` + `user_id` + `biz_date` |
+| `draw_record` | Unique `draw_no`; stores result and reward snapshots |
+| `share_record` | Unique `share_token` |
+| `share_assist_record` | One assist per share token and assistant |
+| `reward_claim_record` | One claim per user/draw/reward; unique `claim_token` |
+| `grand_prize_qualification` | One qualification record per activity/user |
+
+## Main Data Flow
 
 ```text
 createSession
@@ -90,31 +96,26 @@ friend drawExecute with share_token
   -> grand_prize_qualification
 
 claimBenefit
+  -> coupon_issue_config
+  -> Hermes manualImport
   -> reward_claim_record
 
-posterSave
-  -> poster png file
+recordTrackingEvent
   -> tracking_event
 ```
 
-## 6. SQLite 到 MySQL 切换口径
+## MySQL Compatibility Notes
 
-当前已具备：
+- `?` placeholders are translated to `%s` in the MySQL adapter.
+- MySQL uses `DictCursor`, so repository/service code continues to read rows by column name.
+- Insert ids go through `last_insert_id()`.
+- SQLite `ON CONFLICT` and MySQL `ON DUPLICATE KEY UPDATE` are handled by engine-specific helper SQL where needed.
+- Tracking `client_time` is normalized to `YYYY-MM-DD HH:MM:SS` before insert so MySQL `DATETIME` accepts frontend ISO timestamps.
 
-- MySQL 建表和 seed 脚本。
-- `scripts/prepare_mysql.py` dry-run/execute。
-- 后端测试覆盖 MySQL 表数量和脚本顺序。
-
-上线切换还需要：
-
-- 在 `backend/app/database.py` 增加 MySQL 连接适配，或新增 repository adapter。
-- 将 SQL 占位符、日期函数、JSON 字段读写统一抽象，避免 SQLite/MySQL 语法差异散落在业务代码里。
-- 上线前在空 MySQL 库执行 `python scripts/prepare_mysql.py --execute`，再跑接口冒烟。
-
-## 7. 检查命令
+## Verification
 
 ```powershell
 python -m unittest backend.tests.test_database -v
 python -m unittest backend.tests.test_prepare_mysql -v
-python scripts/prepare_mysql.py
+python scripts/prepare_mysql.py --skip-create-database
 ```
