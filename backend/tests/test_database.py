@@ -1,11 +1,33 @@
 import json
+import os
 import sqlite3
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from backend.app.database import connect, connection, default_database_path, fetch_one, table_names
+from backend.app.database import (
+    build_mysql_config,
+    connect,
+    connection,
+    default_database_path,
+    fetch_one,
+    get_database_engine,
+    is_mysql_connection,
+    last_insert_id,
+    table_names,
+    translate_sql_placeholders,
+)
+from backend.app.activity_service import (
+    _activity_user_upsert_sql,
+    _grand_prize_draw_config_upsert_sql,
+    _grand_prize_qualification_upsert_sql,
+)
 from backend.app.health import build_health_status
 from backend.app.repositories import ActivityRepository
+
+
+class FakeMysqlConnection:
+    db_engine = "mysql"
 
 
 class DatabaseConnectionTests(unittest.TestCase):
@@ -41,6 +63,75 @@ class DatabaseConnectionTests(unittest.TestCase):
 
         self.assertEqual(row, {"activity_code": "gaokao_lucky_sign_2026"})
         self.assertIsNone(missing)
+
+    def test_database_engine_defaults_to_sqlite_and_allows_mysql(self):
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(get_database_engine(), "sqlite")
+
+        with patch.dict(os.environ, {"GAOKAO_H5_DB_ENGINE": "MySQL"}):
+            self.assertEqual(get_database_engine(), "mysql")
+
+    def test_translate_sql_placeholders_preserves_quoted_question_marks(self):
+        sql = "SELECT '?' AS literal, id FROM t WHERE a = ? AND b = '?' AND c = ?"
+
+        translated = translate_sql_placeholders(sql)
+
+        self.assertEqual(translated, "SELECT '?' AS literal, id FROM t WHERE a = %s AND b = '?' AND c = %s")
+
+    def test_build_mysql_config_reads_environment_without_using_sqlite_path(self):
+        with patch.dict(
+            os.environ,
+            {
+                "GAOKAO_H5_MYSQL_HOST": "10.3.0.4",
+                "GAOKAO_H5_MYSQL_PORT": "3306",
+                "GAOKAO_H5_MYSQL_DATABASE": "app_333d63781c34389e",
+                "GAOKAO_H5_MYSQL_USER": "appuser",
+                "GAOKAO_H5_MYSQL_PASSWORD": "secret-password",
+            },
+        ):
+            config = build_mysql_config()
+
+        self.assertEqual(config["host"], "10.3.0.4")
+        self.assertEqual(config["port"], 3306)
+        self.assertEqual(config["database"], "app_333d63781c34389e")
+        self.assertEqual(config["user"], "appuser")
+        self.assertEqual(config["password"], "secret-password")
+
+    def test_last_insert_id_uses_db_api_cursor_lastrowid(self):
+        with connection() as conn:
+            cursor = conn.execute(
+                "INSERT INTO tracking_event (activity_code, page_code, event_name, event_payload) VALUES (?, ?, ?, ?)",
+                ("gaokao_lucky_sign_2026", "test", "adapter_test", "{}"),
+            )
+            inserted_id = last_insert_id(conn, cursor)
+            conn.rollback()
+
+        self.assertGreater(inserted_id, 0)
+        self.assertFalse(is_mysql_connection(conn))
+
+    def test_activity_user_upsert_sql_switches_to_mysql_syntax(self):
+        mysql_sql = _activity_user_upsert_sql(FakeMysqlConnection())
+
+        self.assertIn("ON DUPLICATE KEY UPDATE", mysql_sql)
+        self.assertIn("VALUES(external_user_id)", mysql_sql)
+        self.assertNotIn("ON CONFLICT", mysql_sql)
+        self.assertNotIn("excluded.", mysql_sql)
+
+    def test_grand_prize_draw_config_upsert_sql_switches_to_mysql_syntax(self):
+        mysql_sql = _grand_prize_draw_config_upsert_sql(FakeMysqlConnection())
+
+        self.assertIn("ON DUPLICATE KEY UPDATE", mysql_sql)
+        self.assertIn("VALUES(winning_lottery_nos)", mysql_sql)
+        self.assertNotIn("ON CONFLICT", mysql_sql)
+        self.assertNotIn("excluded.", mysql_sql)
+
+    def test_grand_prize_qualification_upsert_sql_switches_to_mysql_syntax(self):
+        mysql_sql = _grand_prize_qualification_upsert_sql(FakeMysqlConnection())
+
+        self.assertIn("ON DUPLICATE KEY UPDATE", mysql_sql)
+        self.assertIn("VALUES(qualification_snapshot_json)", mysql_sql)
+        self.assertNotIn("ON CONFLICT", mysql_sql)
+        self.assertNotIn("excluded.", mysql_sql)
 
 
 class ActivityRepositoryTests(unittest.TestCase):
@@ -120,6 +211,45 @@ class HealthStatusTests(unittest.TestCase):
         self.assertEqual(status["activity"]["activity_code"], "gaokao_lucky_sign_2026")
         self.assertEqual(status["activity"]["daily_default_chance"], 1000)
         self.assertEqual(status["seed_counts"]["reward_count"], 7)
+
+    def test_build_health_status_uses_mysql_engine_connection_without_sqlite_path(self):
+        calls = []
+
+        class DummyConnectionContext:
+            def __enter__(self):
+                return object()
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        def fake_connection(*args):
+            calls.append(args)
+            return DummyConnectionContext()
+
+        class FakeRepository:
+            def __init__(self, conn):
+                self.conn = conn
+
+            def get_activity_state_config(self, activity_code):
+                return {"activity_code": activity_code}
+
+            def get_basic_config_counts(self, activity_code):
+                return {"reward_count": 7}
+
+        with (
+            patch("backend.app.health.get_database_engine", return_value="mysql"),
+            patch("backend.app.health.build_mysql_config", return_value={"host": "10.3.0.4", "database": "app_db", "user": "appuser", "password": "secret"}),
+            patch("backend.app.health.connection", side_effect=fake_connection),
+            patch("backend.app.health.table_names", return_value=["activity_config"]),
+            patch("backend.app.health.ActivityRepository", FakeRepository),
+        ):
+            status = build_health_status("gaokao_lucky_sign_2026")
+
+        self.assertEqual(calls, [()])
+        self.assertEqual(status["database"]["engine"], "mysql")
+        self.assertEqual(status["database"]["host"], "10.3.0.4")
+        self.assertEqual(status["database"]["database"], "app_db")
+        self.assertNotIn("password", status["database"])
 
 
 if __name__ == "__main__":

@@ -1,6 +1,5 @@
 import json
 import re
-import sqlite3
 import secrets
 import uuid
 from datetime import date, datetime
@@ -8,7 +7,7 @@ from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from .ai_explain import generate_ai_explain
-from .database import connection, fetch_all, fetch_one
+from .database import connection, fetch_all, fetch_one, is_integrity_error, is_mysql_connection, last_insert_id
 from ..services.hermes_coupon_client import HermesCouponClient, HermesCouponError, HermesCouponIssueConfig
 
 
@@ -37,17 +36,21 @@ def get_hermes_coupon_client() -> HermesCouponClient:
     return _hermes_coupon_client
 
 
-def create_session(payload: dict[str, Any]) -> dict[str, Any]:
-    activity_code = payload.get("activity_code") or DEFAULT_ACTIVITY_CODE
-    user_key = payload.get("user_key") or f"anon_{uuid.uuid4().hex}"
-    share_token = payload.get("share_token")
-    source_user_id = None
-    invite_status = "none"
-
-    with connection() as conn:
-        config = _get_activity_config(conn, activity_code)
-        conn.execute(
+def _activity_user_upsert_sql(conn) -> str:
+    if is_mysql_connection(conn):
+        return """
+            INSERT INTO activity_user (activity_code, user_key, external_user_id, openid, unionid, nickname, avatar_url, source_channel)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+              external_user_id = COALESCE(VALUES(external_user_id), activity_user.external_user_id),
+              openid = COALESCE(VALUES(openid), activity_user.openid),
+              unionid = COALESCE(VALUES(unionid), activity_user.unionid),
+              nickname = COALESCE(VALUES(nickname), activity_user.nickname),
+              avatar_url = COALESCE(VALUES(avatar_url), activity_user.avatar_url),
+              source_channel = COALESCE(VALUES(source_channel), activity_user.source_channel),
+              updated_at = CURRENT_TIMESTAMP
             """
+    return """
             INSERT INTO activity_user (activity_code, user_key, external_user_id, openid, unionid, nickname, avatar_url, source_channel)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(activity_code, user_key) DO UPDATE SET
@@ -58,7 +61,108 @@ def create_session(payload: dict[str, Any]) -> dict[str, Any]:
               avatar_url = COALESCE(excluded.avatar_url, activity_user.avatar_url),
               source_channel = COALESCE(excluded.source_channel, activity_user.source_channel),
               updated_at = CURRENT_TIMESTAMP
-            """,
+            """
+
+
+def _grand_prize_draw_config_upsert_sql(conn) -> str:
+    if is_mysql_connection(conn):
+        return """
+            INSERT INTO grand_prize_draw_config (
+              activity_code, draw_enabled, draw_time, winning_lottery_nos, configured_by, remark
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+              draw_enabled = VALUES(draw_enabled),
+              draw_time = VALUES(draw_time),
+              winning_lottery_nos = VALUES(winning_lottery_nos),
+              configured_by = VALUES(configured_by),
+              remark = VALUES(remark),
+              updated_at = CURRENT_TIMESTAMP
+            """
+    return """
+            INSERT INTO grand_prize_draw_config (
+              activity_code, draw_enabled, draw_time, winning_lottery_nos, configured_by, remark
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(activity_code) DO UPDATE SET
+              draw_enabled = excluded.draw_enabled,
+              draw_time = excluded.draw_time,
+              winning_lottery_nos = excluded.winning_lottery_nos,
+              configured_by = excluded.configured_by,
+              remark = excluded.remark,
+              updated_at = CURRENT_TIMESTAMP
+            """
+
+
+def _grand_prize_qualification_upsert_sql(conn) -> str:
+    if is_mysql_connection(conn):
+        return """
+        INSERT INTO grand_prize_qualification (
+          activity_code, user_id, qualify_status, qualify_type, shared_count, lit_days,
+          lottery_no, lottery_suffix, lottery_status, qrcode_id, qrcode_url, qualified_at, qualification_snapshot_json
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'grand_prize_wechat_default', '/assets/p8/qrcode_grand_prize_wechat.png',
+                CASE WHEN ? = 'qualified' THEN CURRENT_TIMESTAMP ELSE NULL END, ?)
+        ON DUPLICATE KEY UPDATE
+          qualify_status = VALUES(qualify_status),
+          qualify_type = VALUES(qualify_type),
+          shared_count = VALUES(shared_count),
+          lit_days = VALUES(lit_days),
+          lottery_no = CASE
+            WHEN ? = 1 OR COALESCE(grand_prize_qualification.lottery_no, '') = '' THEN VALUES(lottery_no)
+            ELSE grand_prize_qualification.lottery_no
+          END,
+          lottery_suffix = CASE
+            WHEN ? = 1 OR COALESCE(grand_prize_qualification.lottery_no, '') = '' THEN VALUES(lottery_suffix)
+            ELSE COALESCE(NULLIF(grand_prize_qualification.lottery_suffix, ''), VALUES(lottery_suffix))
+          END,
+          qualified_at = CASE
+            WHEN grand_prize_qualification.qualified_at IS NULL AND VALUES(qualify_status) = 'qualified' THEN CURRENT_TIMESTAMP
+            ELSE grand_prize_qualification.qualified_at
+          END,
+          qualification_snapshot_json = VALUES(qualification_snapshot_json),
+          updated_at = CURRENT_TIMESTAMP
+        """
+    return """
+        INSERT INTO grand_prize_qualification (
+          activity_code, user_id, qualify_status, qualify_type, shared_count, lit_days,
+          lottery_no, lottery_suffix, lottery_status, qrcode_id, qrcode_url, qualified_at, qualification_snapshot_json
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'grand_prize_wechat_default', '/assets/p8/qrcode_grand_prize_wechat.png',
+                CASE WHEN ? = 'qualified' THEN CURRENT_TIMESTAMP ELSE NULL END, ?)
+        ON CONFLICT(activity_code, user_id) DO UPDATE SET
+          qualify_status = excluded.qualify_status,
+          qualify_type = excluded.qualify_type,
+          shared_count = excluded.shared_count,
+          lit_days = excluded.lit_days,
+          lottery_no = CASE
+            WHEN ? = 1 OR COALESCE(grand_prize_qualification.lottery_no, '') = '' THEN excluded.lottery_no
+            ELSE grand_prize_qualification.lottery_no
+          END,
+          lottery_suffix = CASE
+            WHEN ? = 1 OR COALESCE(grand_prize_qualification.lottery_no, '') = '' THEN excluded.lottery_suffix
+            ELSE COALESCE(NULLIF(grand_prize_qualification.lottery_suffix, ''), excluded.lottery_suffix)
+          END,
+          qualified_at = CASE
+            WHEN grand_prize_qualification.qualified_at IS NULL AND excluded.qualify_status = 'qualified' THEN CURRENT_TIMESTAMP
+            ELSE grand_prize_qualification.qualified_at
+          END,
+          qualification_snapshot_json = excluded.qualification_snapshot_json,
+          updated_at = CURRENT_TIMESTAMP
+        """
+
+
+def create_session(payload: dict[str, Any]) -> dict[str, Any]:
+    activity_code = payload.get("activity_code") or DEFAULT_ACTIVITY_CODE
+    user_key = payload.get("user_key") or f"anon_{uuid.uuid4().hex}"
+    share_token = payload.get("share_token")
+    source_user_id = None
+    invite_status = "none"
+
+    with connection() as conn:
+        config = _get_activity_config(conn, activity_code)
+        conn.execute(
+            _activity_user_upsert_sql(conn),
             (
                 activity_code,
                 user_key,
@@ -153,7 +257,7 @@ def execute_draw(payload: dict[str, Any]) -> dict[str, Any]:
         result_summary = _build_p2_result(result)
         result_summary["reward_code"] = draw_reward["reward_code"]
         result_summary["rewardCode"] = draw_reward["reward_code"]
-        conn.execute(
+        cursor = conn.execute(
             """
             INSERT INTO draw_record (
               activity_code, user_id, session_id, draw_no, result_code, biz_date, source_share_token,
@@ -180,7 +284,7 @@ def execute_draw(payload: dict[str, Any]) -> dict[str, Any]:
                 json.dumps(result_summary, ensure_ascii=False),
             ),
         )
-        draw_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+        draw_id = last_insert_id(conn, cursor)
 
         chance_before = int(daily_state["remaining_draw_count"])
         chance_after = chance_before - 1
@@ -342,7 +446,9 @@ def claim_benefit(payload: dict[str, Any]) -> dict[str, Any]:
                 )
                 claim_id = int(cursor.lastrowid)
                 conn.commit()
-            except sqlite3.IntegrityError:
+            except Exception as error:
+                if not is_integrity_error(error):
+                    raise
                 conn.rollback()
                 duplicate = fetch_one(
                     conn,
@@ -621,19 +727,7 @@ def save_grand_prize_draw_config(payload: dict[str, Any]) -> dict[str, Any]:
         existing_config = _get_grand_prize_draw_config_row(conn, activity_code)
         draw_time = _normalize_grand_prize_draw_time(payload.get("draw_time") or existing_config.get("draw_time"))
         conn.execute(
-            """
-            INSERT INTO grand_prize_draw_config (
-              activity_code, draw_enabled, draw_time, winning_lottery_nos, configured_by, remark
-            )
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(activity_code) DO UPDATE SET
-              draw_enabled = excluded.draw_enabled,
-              draw_time = excluded.draw_time,
-              winning_lottery_nos = excluded.winning_lottery_nos,
-              configured_by = excluded.configured_by,
-              remark = excluded.remark,
-              updated_at = CURRENT_TIMESTAMP
-            """,
+            _grand_prize_draw_config_upsert_sql(conn),
             (
                 activity_code,
                 1 if draw_enabled else 0,
@@ -990,7 +1084,7 @@ def record_tracking_event(payload: dict[str, Any]) -> dict[str, Any]:
                 "SELECT activity_code, user_id, session_token FROM activity_session WHERE session_token = ?",
                 (payload["session_token"],),
             )
-        conn.execute(
+        cursor = conn.execute(
             """
             INSERT INTO tracking_event (activity_code, user_id, session_token, page_code, event_name, event_payload, client_time)
             VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -1005,7 +1099,7 @@ def record_tracking_event(payload: dict[str, Any]) -> dict[str, Any]:
                 payload.get("client_time"),
             ),
         )
-        event_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+        event_id = last_insert_id(conn, cursor)
         conn.commit()
         return {"success": True, "event_id": event_id}
 
@@ -1384,33 +1478,7 @@ def _refresh_qualification(conn, config: dict[str, Any], user_id: int) -> dict[s
         "light_target": light_target,
     }
     conn.execute(
-        """
-        INSERT INTO grand_prize_qualification (
-          activity_code, user_id, qualify_status, qualify_type, shared_count, lit_days,
-          lottery_no, lottery_suffix, lottery_status, qrcode_id, qrcode_url, qualified_at, qualification_snapshot_json
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'grand_prize_wechat_default', '/assets/p8/qrcode_grand_prize_wechat.png',
-                CASE WHEN ? = 'qualified' THEN CURRENT_TIMESTAMP ELSE NULL END, ?)
-        ON CONFLICT(activity_code, user_id) DO UPDATE SET
-          qualify_status = excluded.qualify_status,
-          qualify_type = excluded.qualify_type,
-          shared_count = excluded.shared_count,
-          lit_days = excluded.lit_days,
-          lottery_no = CASE
-            WHEN ? = 1 OR COALESCE(grand_prize_qualification.lottery_no, '') = '' THEN excluded.lottery_no
-            ELSE grand_prize_qualification.lottery_no
-          END,
-          lottery_suffix = CASE
-            WHEN ? = 1 OR COALESCE(grand_prize_qualification.lottery_no, '') = '' THEN excluded.lottery_suffix
-            ELSE COALESCE(NULLIF(grand_prize_qualification.lottery_suffix, ''), excluded.lottery_suffix)
-          END,
-          qualified_at = CASE
-            WHEN grand_prize_qualification.qualified_at IS NULL AND excluded.qualify_status = 'qualified' THEN CURRENT_TIMESTAMP
-            ELSE grand_prize_qualification.qualified_at
-          END,
-          qualification_snapshot_json = excluded.qualification_snapshot_json,
-          updated_at = CURRENT_TIMESTAMP
-        """,
+        _grand_prize_qualification_upsert_sql(conn),
         (
             activity_code,
             user_id,

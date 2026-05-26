@@ -50,9 +50,20 @@ class MysqlPrepareScriptTests(unittest.TestCase):
 
         self.assertIn("CREATE DATABASE IF NOT EXISTS `gaokao_h5_prod`", sql)
         self.assertIn("USE `gaokao_h5_prod`;", sql)
+        self.assertIn("NO_BACKSLASH_ESCAPES", sql)
         self.assertIn("001_init_activity_tables.sql", sql)
         self.assertIn("002_seed_basic_mock_config.sql", sql)
         self.assertNotIn("secret-password", sql)
+
+    def test_build_bootstrap_sql_can_skip_create_database_for_existing_app_database(self):
+        root_dir = Path(__file__).resolve().parents[2]
+        config = MysqlPrepareConfig(database="app_333d63781c34389e", create_database=False)
+
+        sql = build_bootstrap_sql(root_dir, config)
+
+        self.assertNotIn("CREATE DATABASE", sql)
+        self.assertIn("USE `app_333d63781c34389e`;", sql)
+        self.assertIn("001_init_activity_tables.sql", sql)
 
     def test_database_name_must_be_a_mysql_identifier(self):
         config = MysqlPrepareConfig(database="gaokao-h5-prod")

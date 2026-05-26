@@ -96,3 +96,24 @@ PORTAL_PASSWORD=<portal backend password>
 `HERMES_*` environment variables are only a legacy/default fallback for direct client usage. The activity claim flow reads the matching row from `coupon_issue_config` and passes that config to Hermes.
 
 Do not commit `.env` files. The Hermes client only logs task id, masked mobile, `successNum`, and `failNum`; it must not log `PORTAL_PASSWORD`, `ut`, or `X-Token`.
+
+## MySQL runtime override
+
+FastAPI defaults to SQLite for local development. Set these environment variables to run against MySQL:
+
+```text
+GAOKAO_H5_DB_ENGINE=mysql
+GAOKAO_H5_MYSQL_HOST=10.3.0.4
+GAOKAO_H5_MYSQL_PORT=3306
+GAOKAO_H5_MYSQL_DATABASE=app_333d63781c34389e
+GAOKAO_H5_MYSQL_USER=appuser
+GAOKAO_H5_MYSQL_PASSWORD=<set outside git>
+```
+
+For an existing application database, initialize schema and seed without trying to create the database:
+
+```powershell
+python scripts/prepare_mysql.py --skip-create-database --execute
+```
+
+The bootstrap SQL sets `NO_BACKSLASH_ESCAPES` for the session before loading seed data so JSON text containing `\n` survives import.

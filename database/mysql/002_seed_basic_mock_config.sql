@@ -1,4 +1,5 @@
 SET NAMES utf8mb4;
+SET SESSION sql_mode = CONCAT_WS(',', NULLIF(@@sql_mode, ''), 'NO_BACKSLASH_ESCAPES');
 START TRANSACTION;
 
 INSERT INTO activity_config (
