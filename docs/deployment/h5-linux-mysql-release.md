@@ -12,9 +12,9 @@
 
 - Backend command: `/root/festival-activity/.venv/bin/uvicorn backend.app.main:app --host 127.0.0.1 --port 8000`
 - Backend working directory: `/root/festival-activity`
-- Nginx config path: `/etc/nginx/sites-available/gaokao-h5`
-- Frontend dist deploy path: `/var/www/gaokao-h5`
-- Nginx static root: `/var/www/gaokao-h5`
+- Nginx config path: `/etc/nginx/sites-available/festival-activity`
+- Frontend dist deploy path: `/var/www/festival-activity`
+- Nginx static root: `/var/www/festival-activity`
 - Nginx API proxy: `/api/` -> `http://127.0.0.1:8000/api/`
 
 ## Environment
@@ -46,7 +46,7 @@
 ## Rollback
 
 1. Stop or keep the backend process in place depending on rollback scope.
-2. Restore the previous frontend files under `/var/www/gaokao-h5` from the last known-good artifact.
+2. Restore the previous frontend files under `/var/www/festival-activity` from the last known-good artifact.
 3. Restore the previous backend Git revision:
    ```bash
    cd /root/festival-activity

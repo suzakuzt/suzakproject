@@ -8,7 +8,7 @@ const emitApiLog = (entry) => {
   }
 
   window.dispatchEvent(
-    new CustomEvent('gaokao-h5-api-log', {
+    new CustomEvent('festival-activity-api-log', {
       detail: {
         ...entry,
         logged_at: new Date().toLocaleTimeString(),
