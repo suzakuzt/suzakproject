@@ -1913,7 +1913,7 @@ button {
 .p2-poster-button {
   position: absolute;
   z-index: 7;
-  top: 67.9%;
+  top: 66.6%;
   bottom: auto;
   left: 50%;
   width: 24%;
@@ -1935,7 +1935,7 @@ button {
 }
 
 .p2-poster-button.is-explain-open {
-  top: 67.9%;
+  top: 66.6%;
   bottom: auto;
   opacity: 1;
   pointer-events: auto;
