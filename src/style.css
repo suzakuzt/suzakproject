@@ -462,7 +462,10 @@ button {
   z-index: 20;
   inset: 0;
   display: grid;
-  place-items: center;
+  place-items: start center;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
   padding: max(24px, calc(24px + var(--safe-top))) max(24px, calc(24px + var(--safe-right))) max(24px, calc(24px + var(--safe-bottom))) max(24px, calc(24px + var(--safe-left)));
   background: rgba(24, 0, 0, 0.56);
 }
@@ -1959,6 +1962,10 @@ button {
 .p2-poster-dialog {
   position: relative;
   width: min(84vw, 332px);
+  max-height: calc(100svh - 48px - var(--safe-top) - var(--safe-bottom));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   color: #5d2417;
   text-align: center;
 }
@@ -2013,9 +2020,10 @@ button {
 }
 
 .p2-poster-generated-preview {
+  flex: 0 1 auto;
   display: block;
   width: 100%;
-  max-height: min(72svh, 640px);
+  max-height: min(calc(100svh - 170px - var(--safe-top) - var(--safe-bottom)), 640px);
   border: 2px solid #080000;
   border-radius: 8px;
   background: #f7ddb1;

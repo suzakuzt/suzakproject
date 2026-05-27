@@ -67,6 +67,7 @@ describe('P1 activity home', () => {
     const navigateTo = vi.fn()
     window.wx = {
       miniProgram: {
+        getEnv: (callback) => callback({ miniprogram: true }),
         navigateTo,
       },
     }
@@ -80,23 +81,39 @@ describe('P1 activity home', () => {
     expect(goMiniProgramCouponPage()).toBe(false)
   })
 
-  it('navigates to the mini-program poster-save page with an encoded poster image url', () => {
+  it('navigates to the mini-program poster-save page with an encoded poster image url', async () => {
     const navigateTo = vi.fn()
     window.wx = {
       miniProgram: {
+        getEnv: (callback) => callback({ miniprogram: true }),
         navigateTo,
       },
     }
     const posterUrl = 'https://gkcq2026.nat100.top/api/poster/image/home_poster_test'
 
-    expect(goMiniProgramPosterSavePage(posterUrl)).toBe(true)
+    expect(await goMiniProgramPosterSavePage(posterUrl)).toBe(true)
     expect(navigateTo).toHaveBeenCalledWith({
       url: `${MINI_PROGRAM_POSTER_SAVE_PAGE}?posterUrl=${encodeURIComponent(posterUrl)}`,
     })
 
     delete window.wx
-    expect(goMiniProgramPosterSavePage(posterUrl)).toBe(false)
-    expect(goMiniProgramPosterSavePage('')).toBe(false)
+    expect(await goMiniProgramPosterSavePage(posterUrl)).toBe(false)
+    expect(await goMiniProgramPosterSavePage('')).toBe(false)
+  })
+
+  it('does not open the poster-save page from a normal WeChat browser', async () => {
+    const navigateTo = vi.fn()
+    window.wx = {
+      miniProgram: {
+        getEnv: (callback) => callback({ miniprogram: false }),
+        navigateTo,
+      },
+    }
+
+    expect(await goMiniProgramPosterSavePage('https://gkcq2026.nat100.top/api/poster/image/home_poster_test')).toBe(
+      false,
+    )
+    expect(navigateTo).not.toHaveBeenCalled()
   })
 
   it('uses the real mini-program my-coupon page path for coupon targets', () => {
@@ -445,6 +462,92 @@ describe('P1 activity home', () => {
     )
   })
 
+  it('renders the home share poster as one generated image before users long-press it', async () => {
+    const previewDataUrl = 'data:image/png;base64,home-composed-preview'
+    const createSession = vi.fn().mockResolvedValue({ session_token: 'sess_home' })
+    const canvasContext = {
+      drawImage: vi.fn(),
+      fillRect: vi.fn(),
+      fillText: vi.fn(),
+      restore: vi.fn(),
+      save: vi.fn(),
+      scale: vi.fn(),
+    }
+    const originalImage = globalThis.Image
+    const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(canvasContext)
+    const toDataUrlSpy = vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue(previewDataUrl)
+    globalThis.Image = class {
+      constructor() {
+        this.naturalWidth = 941
+        this.naturalHeight = 1672
+      }
+
+      set src(value) {
+        this._src = value
+        setTimeout(() => this.onload?.(), 0)
+      }
+    }
+    const wrapper = mountHome({
+      apiClient: { createSession, trackEvent: vi.fn().mockResolvedValue({}) },
+    })
+
+    await wrapper.get('[data-testid="share-entry"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="home-share-activity-poster"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="home-share-generated-preview"]').attributes('src')).toBe(previewDataUrl)
+    expect(canvasContext.fillRect).toHaveBeenCalled()
+    expect(canvasContext.drawImage).toHaveBeenCalled()
+
+    wrapper.unmount()
+    globalThis.Image = originalImage
+    getContextSpy.mockRestore()
+    toDataUrlSpy.mockRestore()
+  })
+
+  it('renders the result share poster as one generated image before users long-press it', async () => {
+    const previewDataUrl = 'data:image/png;base64,result-composed-preview'
+    const createSession = vi.fn().mockResolvedValue({ session_token: 'sess_result' })
+    const canvasContext = {
+      drawImage: vi.fn(),
+      fillRect: vi.fn(),
+      fillText: vi.fn(),
+      restore: vi.fn(),
+      save: vi.fn(),
+      scale: vi.fn(),
+    }
+    const originalImage = globalThis.Image
+    const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(canvasContext)
+    const toDataUrlSpy = vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue(previewDataUrl)
+    globalThis.Image = class {
+      constructor() {
+        this.naturalWidth = 941
+        this.naturalHeight = 1672
+      }
+
+      set src(value) {
+        this._src = value
+        setTimeout(() => this.onload?.(), 0)
+      }
+    }
+    const wrapper = mountResult({
+      apiClient: { createSession, trackEvent: vi.fn().mockResolvedValue({}) },
+    })
+
+    await wrapper.get('[data-testid="share-poster"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="p2-poster-card"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="p2-poster-generated-preview"]').attributes('src')).toBe(previewDataUrl)
+    expect(canvasContext.fillRect).toHaveBeenCalled()
+    expect(canvasContext.drawImage).toHaveBeenCalled()
+
+    wrapper.unmount()
+    globalThis.Image = originalImage
+    getContextSpy.mockRestore()
+    toDataUrlSpy.mockRestore()
+  })
+
   it('saves the home share poster through the poster API and local download flow', async () => {
     const imageDataUrl =
       'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII='
@@ -530,6 +633,7 @@ describe('P1 activity home', () => {
     const navigateTo = vi.fn()
     window.wx = {
       miniProgram: {
+        getEnv: (callback) => callback({ miniprogram: true }),
         navigateTo,
       },
     }
@@ -764,10 +868,14 @@ describe('P1 activity home', () => {
     expect(css).toMatch(/\.p2-poster-button\.is-explain-open\s*{[^}]*top:\s*67\.9%;[^}]*bottom:\s*auto;[^}]*opacity:\s*1;[^}]*pointer-events:\s*auto;/s)
     expect(css).toMatch(/\.p2-result-body\s*{[^}]*pointer-events:\s*none;/s)
     expect(css).not.toMatch(/\.p2-poster-button\.is-explain-open\s*{[^}]*pointer-events:\s*none;/s)
+    expect(css).toMatch(/\.modal-mask\s*{[^}]*overflow-y:\s*auto;/s)
     expect(css).toMatch(/\.p2-poster-dialog\s*{[^}]*width:\s*min\(84vw,\s*332px\);/s)
+    expect(css).toMatch(/\.p2-poster-dialog\s*{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;/s)
+    expect(css).toMatch(/\.p2-poster-dialog\s*{[^}]*max-height:\s*calc\(100svh - 48px - var\(--safe-top\) - var\(--safe-bottom\)\);/s)
     expect(css).toMatch(/\.p2-poster-card\s*{[^}]*background:\s*#a10805;[^}]*overflow:\s*hidden;/s)
     expect(css).toMatch(/\.activity-share-poster-image\s*{[^}]*aspect-ratio:\s*941\s*\/\s*1672;/s)
     expect(css).toMatch(/\.activity-share-poster-qrcode\s*{[^}]*left:\s*15%;[^}]*top:\s*84\.7%;[^}]*width:\s*21\.2%;/s)
+    expect(css).toMatch(/\.p2-poster-generated-preview\s*{[^}]*max-height:\s*min\(calc\(100svh - 170px - var\(--safe-top\) - var\(--safe-bottom\)\),\s*640px\);/s)
     expect(css).toMatch(/@media \(max-height:\s*720px\)\s*{[^}]*\.p2-stage\s*{[^}]*width:\s*min\(100vw,\s*405px\);/s)
     expect(css).toMatch(/@media \(max-height:\s*680px\)\s*{[^}]*\.p2-stage\s*{[^}]*width:\s*min\(100vw,\s*382px\);/s)
     expect(css).toMatch(/@media \(max-height:\s*640px\)\s*{[^}]*\.p2-stage\s*{[^}]*width:\s*min\(100vw,\s*360px\);/s)

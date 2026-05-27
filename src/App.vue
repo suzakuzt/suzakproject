@@ -641,6 +641,21 @@ const renderActivityPosterCanvas = async () => {
 
   return canvas
 }
+const prepareActivityPosterPreview = async (setPreview, isCurrent) => {
+  try {
+    const canvas = await renderActivityPosterCanvas()
+    if (!canvas || !isCurrent()) {
+      return
+    }
+
+    const previewSrc = canvas.toDataURL('image/png')
+    if (previewSrc && isCurrent()) {
+      setPreview((currentSrc) => currentSrc || previewSrc)
+    }
+  } catch {
+    // Keep the static poster visible if preview composition fails.
+  }
+}
 const saveActivityPoster = async ({ posterType, setMessage, setPreview, shareChannel = 'poster_save' }) => {
   setMessage('保存中...')
   const canvas = await renderActivityPosterCanvas()
@@ -665,7 +680,9 @@ const saveActivityPoster = async ({ posterType, setMessage, setPreview, shareCha
     })
     await completeShare(shareChannel)
 
-    const redirected = Boolean(result?.saved && posterUrl && goMiniProgramPosterSavePage(toAbsolutePosterUrl(posterUrl)))
+    const redirected = Boolean(
+      result?.saved && posterUrl && (await goMiniProgramPosterSavePage(toAbsolutePosterUrl(posterUrl))),
+    )
     if (redirected) {
       shouldDownloadFallback = false
       setMessage(MINI_PROGRAM_POSTER_SAVE_MESSAGE)
@@ -695,7 +712,7 @@ const saveHomeSharePoster = () =>
       sharePosterSaveMessage.value = message
     },
     setPreview: (src) => {
-      sharePosterPreviewSrc.value = src
+      sharePosterPreviewSrc.value = typeof src === 'function' ? src(sharePosterPreviewSrc.value) : src
     },
   })
 const saveP2Poster = () =>
@@ -705,7 +722,7 @@ const saveP2Poster = () =>
       p2PosterSaveMessage.value = message
     },
     setPreview: (src) => {
-      p2PosterPreviewSrc.value = src
+      p2PosterPreviewSrc.value = typeof src === 'function' ? src(p2PosterPreviewSrc.value) : src
     },
   })
 const openP7QrcodePreview = () => {
@@ -780,7 +797,30 @@ watch(showShareGuide, (visible) => {
   if (!visible) {
     sharePosterSaveMessage.value = ''
     sharePosterPreviewSrc.value = ''
+    return
   }
+
+  prepareActivityPosterPreview(
+    (src) => {
+      sharePosterPreviewSrc.value = typeof src === 'function' ? src(sharePosterPreviewSrc.value) : src
+    },
+    () => showShareGuide.value,
+  )
+})
+
+watch(p2Panel, (panel) => {
+  if (panel !== 'poster') {
+    p2PosterSaveMessage.value = ''
+    p2PosterPreviewSrc.value = ''
+    return
+  }
+
+  prepareActivityPosterPreview(
+    (src) => {
+      p2PosterPreviewSrc.value = typeof src === 'function' ? src(p2PosterPreviewSrc.value) : src
+    },
+    () => p2Panel.value === 'poster',
+  )
 })
 
 watch(currentPage, () => {
