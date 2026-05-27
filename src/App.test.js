@@ -431,8 +431,8 @@ describe('P1 activity home', () => {
     expect(poster.find('[data-testid="p2-poster-qrcode"]').attributes('src')).toContain('qrcode_wechat_group.png')
     expect(poster.find('[data-testid="p2-product-image"]').exists()).toBe(false)
     expect(poster.html()).not.toContain('product_flat_iron_steak.png')
-    expect(poster.text()).not.toContain('海报')
-    expect(poster.get('[data-testid="save-p2-poster"]').text()).toBe('保存')
+    expect(poster.find('[data-testid="save-p2-poster"]').exists()).toBe(false)
+    expect(poster.get('[data-testid="p2-poster-longpress-tip"]').text()).toBe('长按海报可保存/分享')
     expect(poster.get('[data-testid="close-p2-panel"]').attributes('aria-label')).toBe('关闭')
 
     await poster.get('[data-testid="close-p2-panel"]').trigger('click')
@@ -496,6 +496,8 @@ describe('P1 activity home', () => {
 
     expect(wrapper.find('[data-testid="home-share-activity-poster"]').exists()).toBe(false)
     expect(wrapper.get('[data-testid="home-share-generated-preview"]').attributes('src')).toBe(previewDataUrl)
+    expect(wrapper.find('[data-testid="save-home-share-poster"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="home-share-poster-longpress-tip"]').text()).toBe('长按海报可保存/分享')
     expect(canvasContext.fillRect).toHaveBeenCalled()
     expect(canvasContext.drawImage).toHaveBeenCalled()
 
@@ -539,6 +541,8 @@ describe('P1 activity home', () => {
 
     expect(wrapper.find('[data-testid="p2-poster-card"]').exists()).toBe(false)
     expect(wrapper.get('[data-testid="p2-poster-generated-preview"]').attributes('src')).toBe(previewDataUrl)
+    expect(wrapper.find('[data-testid="save-p2-poster"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="p2-poster-longpress-tip"]').text()).toBe('长按海报可保存/分享')
     expect(canvasContext.fillRect).toHaveBeenCalled()
     expect(canvasContext.drawImage).toHaveBeenCalled()
 
@@ -546,242 +550,6 @@ describe('P1 activity home', () => {
     globalThis.Image = originalImage
     getContextSpy.mockRestore()
     toDataUrlSpy.mockRestore()
-  })
-
-  it('saves the home share poster through the poster API and local download flow', async () => {
-    const imageDataUrl =
-      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII='
-    const savePoster = vi.fn().mockResolvedValue({
-      success: true,
-      saved: true,
-      poster_id: 'home_poster_test',
-      poster_url: '/api/poster/image/home_poster_test',
-    })
-    const createSession = vi.fn().mockResolvedValue({ session_token: 'sess_home' })
-    const recordShare = vi.fn().mockResolvedValue({
-      success: true,
-      reward_granted: true,
-      daily_state: {
-        remaining_draw_count: 1001,
-        share_reward_count_today: 1,
-      },
-      share_token: 'SH_HOME_POSTER',
-    })
-    const trackEvent = vi.fn().mockResolvedValue({ success: true })
-    const canvasContext = {
-      drawImage: vi.fn(),
-      fillRect: vi.fn(),
-      fillText: vi.fn(),
-      restore: vi.fn(),
-      save: vi.fn(),
-      scale: vi.fn(),
-    }
-    const originalImage = globalThis.Image
-    const originalToBlob = HTMLCanvasElement.prototype.toBlob
-    const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(canvasContext)
-    const toDataUrlSpy = vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue(imageDataUrl)
-    const anchorClickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
-    const createObjectUrlSpy = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:home-poster')
-    const revokeObjectUrlSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
-    HTMLCanvasElement.prototype.toBlob = vi.fn((callback) => callback(new Blob(['png'], { type: 'image/png' })))
-    globalThis.Image = class {
-      set src(value) {
-        this._src = value
-        setTimeout(() => this.onload?.(), 0)
-      }
-    }
-    const wrapper = mountHome({
-      apiClient: { createSession, savePoster, recordShare, trackEvent },
-    })
-
-    await wrapper.get('[data-testid="share-entry"]').trigger('click')
-    await wrapper.get('[data-testid="save-home-share-poster"]').trigger('click')
-    await flushPromises()
-
-    expect(savePoster).toHaveBeenCalledWith(
-      expect.objectContaining({
-        session_token: 'sess_home',
-        page_code: 'home',
-        poster_type: 'home_share',
-        image_data_url: imageDataUrl,
-      }),
-    )
-    expect(canvasContext.scale).toHaveBeenCalledWith(1, 1)
-    expect(anchorClickSpy).toHaveBeenCalled()
-    expect(recordShare).toHaveBeenCalledWith({ session_token: 'sess_home', share_channel: 'poster_save' })
-    expect(wrapper.text()).toContain('我的摇签机会 1001次')
-    expect(wrapper.get('[data-testid="home-share-poster-save-message"]').text()).toBe(
-      '保存成功，手机端请长按上方图片保存到相册',
-    )
-    expect(wrapper.get('[data-testid="home-share-generated-preview"]').attributes('src')).toBe(
-      '/api/poster/image/home_poster_test',
-    )
-
-    wrapper.unmount()
-    globalThis.Image = originalImage
-    HTMLCanvasElement.prototype.toBlob = originalToBlob
-    getContextSpy.mockRestore()
-    toDataUrlSpy.mockRestore()
-    anchorClickSpy.mockRestore()
-    createObjectUrlSpy.mockRestore()
-    revokeObjectUrlSpy.mockRestore()
-  })
-
-  it('opens the mini-program native poster-save page when a saved poster url is available', async () => {
-    const imageDataUrl =
-      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII='
-    const navigateTo = vi.fn()
-    window.wx = {
-      miniProgram: {
-        getEnv: (callback) => callback({ miniprogram: true }),
-        navigateTo,
-      },
-    }
-    const savePoster = vi.fn().mockResolvedValue({
-      success: true,
-      saved: true,
-      poster_id: 'home_poster_test',
-      poster_url: '/api/poster/image/home_poster_test',
-    })
-    const createSession = vi.fn().mockResolvedValue({ session_token: 'sess_home' })
-    const recordShare = vi.fn().mockResolvedValue({
-      success: true,
-      reward_granted: true,
-      daily_state: {
-        remaining_draw_count: 1001,
-        share_reward_count_today: 1,
-      },
-      share_token: 'SH_HOME_POSTER',
-    })
-    const trackEvent = vi.fn().mockResolvedValue({ success: true })
-    const canvasContext = {
-      drawImage: vi.fn(),
-      fillRect: vi.fn(),
-      fillText: vi.fn(),
-      restore: vi.fn(),
-      save: vi.fn(),
-      scale: vi.fn(),
-    }
-    const originalImage = globalThis.Image
-    const originalToBlob = HTMLCanvasElement.prototype.toBlob
-    const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(canvasContext)
-    const toDataUrlSpy = vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue(imageDataUrl)
-    const anchorClickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
-    HTMLCanvasElement.prototype.toBlob = vi.fn((callback) => callback(new Blob(['png'], { type: 'image/png' })))
-    globalThis.Image = class {
-      set src(value) {
-        this._src = value
-        setTimeout(() => this.onload?.(), 0)
-      }
-    }
-    const wrapper = mountHome({
-      apiClient: { createSession, savePoster, recordShare, trackEvent },
-    })
-
-    await wrapper.get('[data-testid="share-entry"]').trigger('click')
-    await wrapper.get('[data-testid="save-home-share-poster"]').trigger('click')
-    await flushPromises()
-
-    const posterUrl = `${window.location.origin}/api/poster/image/home_poster_test`
-    expect(navigateTo).toHaveBeenCalledWith({
-      url: `${MINI_PROGRAM_POSTER_SAVE_PAGE}?posterUrl=${encodeURIComponent(posterUrl)}`,
-    })
-    expect(anchorClickSpy).not.toHaveBeenCalled()
-    expect(recordShare).toHaveBeenCalledWith({ session_token: 'sess_home', share_channel: 'poster_save' })
-    expect(wrapper.get('[data-testid="home-share-poster-save-message"]').text()).toBe('正在打开小程序保存到相册...')
-
-    wrapper.unmount()
-    globalThis.Image = originalImage
-    HTMLCanvasElement.prototype.toBlob = originalToBlob
-    getContextSpy.mockRestore()
-    toDataUrlSpy.mockRestore()
-    anchorClickSpy.mockRestore()
-  })
-
-  it('saves the poster image through the backend poster API before sharing', async () => {
-    const imageDataUrl =
-      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII='
-    const savePoster = vi.fn().mockResolvedValue({
-      success: true,
-      saved: true,
-      poster_id: 'poster_test',
-      poster_url: '/api/poster/image/poster_test',
-    })
-    const createSession = vi.fn().mockResolvedValue({ session_token: 'sess_test' })
-    const recordShare = vi.fn().mockResolvedValue({
-      success: true,
-      reward_granted: true,
-      daily_state: {
-        remaining_draw_count: 1001,
-        share_reward_count_today: 1,
-      },
-      share_token: 'SH_RESULT_POSTER',
-    })
-    const trackEvent = vi.fn().mockResolvedValue({ success: true })
-    const canvasContext = {
-      beginPath: vi.fn(),
-      drawImage: vi.fn(),
-      fillRect: vi.fn(),
-      fillText: vi.fn(),
-      lineTo: vi.fn(),
-      moveTo: vi.fn(),
-      restore: vi.fn(),
-      save: vi.fn(),
-      scale: vi.fn(),
-      stroke: vi.fn(),
-      strokeRect: vi.fn(),
-    }
-    const originalImage = globalThis.Image
-    const originalToBlob = HTMLCanvasElement.prototype.toBlob
-    const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(canvasContext)
-    const toDataUrlSpy = vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue(imageDataUrl)
-    const anchorClickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
-    const createObjectUrlSpy = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:poster')
-    const revokeObjectUrlSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
-    HTMLCanvasElement.prototype.toBlob = vi.fn((callback) => callback(new Blob(['png'], { type: 'image/png' })))
-    globalThis.Image = class {
-      set src(value) {
-        this._src = value
-        setTimeout(() => this.onload?.(), 0)
-      }
-    }
-    const wrapper = mountResult({
-      apiClient: { createSession, savePoster, recordShare, trackEvent },
-    })
-
-    await wrapper.get('[data-testid="share-poster"]').trigger('click')
-    await wrapper.get('[data-testid="save-p2-poster"]').trigger('click')
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    await new Promise((resolve) => setTimeout(resolve, 0))
-
-    expect(savePoster).toHaveBeenCalledWith(
-      expect.objectContaining({
-        session_token: 'sess_test',
-        page_code: 'p2',
-        poster_type: 'result_share',
-        image_data_url: imageDataUrl,
-      }),
-    )
-    expect(wrapper.get('[data-testid="p2-poster-save-message"]').text()).toBe(
-      '保存成功，手机端请长按上方图片保存到相册',
-    )
-    expect(wrapper.get('[data-testid="p2-poster-generated-preview"]').attributes('src')).toBe(
-      '/api/poster/image/poster_test',
-    )
-    expect(recordShare).toHaveBeenCalledWith({ session_token: 'sess_test', share_channel: 'poster_save' })
-    expect(wrapper.get('[data-testid="p2-poster-save-message"]').text()).toContain('保存到相册')
-
-    expect(canvasContext.moveTo).not.toHaveBeenCalledWith(80, 400)
-    expect(canvasContext.moveTo).not.toHaveBeenCalledWith(80, 562)
-
-    wrapper.unmount()
-    globalThis.Image = originalImage
-    HTMLCanvasElement.prototype.toBlob = originalToBlob
-    getContextSpy.mockRestore()
-    toDataUrlSpy.mockRestore()
-    anchorClickSpy.mockRestore()
-    createObjectUrlSpy.mockRestore()
-    revokeObjectUrlSpy.mockRestore()
   })
 
   it('rotates the default P2/P4 beef product image on each result-page entry', () => {
@@ -1684,7 +1452,7 @@ describe('P1 activity home', () => {
     )
   })
 
-  it('opens the home share poster with close and save controls only', async () => {
+  it('opens the home share poster with close control and long-press tip only', async () => {
     const wrapper = mountHome({ initialChance: 0 })
 
     await wrapper.get('[data-testid="share-entry"]').trigger('click')
@@ -1693,7 +1461,8 @@ describe('P1 activity home', () => {
       'share_activity_poster.png',
     )
     expect(wrapper.get('[data-testid="home-share-qrcode"]').attributes('src')).toContain('qrcode_wechat_group.png')
-    expect(wrapper.get('[data-testid="save-home-share-poster"]').text()).toBe('保存')
+    expect(wrapper.find('[data-testid="save-home-share-poster"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="home-share-poster-longpress-tip"]').text()).toBe('长按海报可保存/分享')
     expect(wrapper.get('[data-testid="close-share-guide"]').attributes('aria-label')).toBe('关闭')
     expect(wrapper.find('[data-testid="share-complete"]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('模拟完成分享')

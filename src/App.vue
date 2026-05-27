@@ -484,6 +484,7 @@ const ACTIVITY_SHARE_POSTER_QR = {
   top: 0.847,
   size: 0.212,
 }
+const POSTER_LONGPRESS_TIP = '长按海报可保存/分享'
 const POSTER_SAVE_SUCCESS_MESSAGE = '保存成功，手机端请长按上方图片保存到相册'
 const POSTER_GENERATED_MESSAGE = '海报已生成，手机端请长按上方图片保存到相册'
 const MINI_PROGRAM_POSTER_SAVE_MESSAGE = '正在打开小程序保存到相册...'
@@ -993,16 +994,12 @@ onBeforeUnmount(() => {
           :src="sharePosterPreviewSrc"
           alt="生成的分享图片"
         />
-        <button class="p2-poster-save" data-testid="save-home-share-poster" type="button" @click="saveHomeSharePoster">
-          保存
-        </button>
         <p
-          v-if="sharePosterSaveMessage"
           class="p2-poster-save-message"
-          data-testid="home-share-poster-save-message"
+          data-testid="home-share-poster-longpress-tip"
           role="status"
         >
-          {{ sharePosterSaveMessage }}
+          {{ POSTER_LONGPRESS_TIP }}
         </p>
       </section>
     </div>
@@ -1185,11 +1182,8 @@ onBeforeUnmount(() => {
           :src="p2PosterPreviewSrc"
           alt="生成的分享图片"
         />
-        <button class="p2-poster-save" data-testid="save-p2-poster" type="button" @click="saveP2Poster">
-          保存
-        </button>
-        <p v-if="p2PosterSaveMessage" class="p2-poster-save-message" data-testid="p2-poster-save-message" role="status">
-          {{ p2PosterSaveMessage }}
+        <p class="p2-poster-save-message" data-testid="p2-poster-longpress-tip" role="status">
+          {{ POSTER_LONGPRESS_TIP }}
         </p>
       </section>
 
