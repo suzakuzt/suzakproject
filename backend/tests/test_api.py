@@ -225,14 +225,14 @@ class ActivityApiFlowTests(unittest.TestCase):
 
         self.assertEqual(session["activity_code"], "gaokao_lucky_sign_2026")
         self.assertEqual(session["user"]["user_key"], "user_001")
-        self.assertEqual(session["daily_state"]["remaining_draw_count"], 1000)
+        self.assertEqual(session["daily_state"]["remaining_draw_count"], 1)
 
         response = self.client.get("/api/activity/state", params={"session_token": session["session_token"]})
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["daily_state"]["base_draw_chance"], 1000)
-        self.assertEqual(payload["daily_state"]["remaining_draw_count"], 1000)
+        self.assertEqual(payload["daily_state"]["base_draw_chance"], 1)
+        self.assertEqual(payload["daily_state"]["remaining_draw_count"], 1)
         self.assertEqual(payload["progress"]["lit_days"], 0)
         self.assertEqual(payload["progress"]["shared_count"], 0)
 
@@ -612,7 +612,7 @@ class ActivityApiFlowTests(unittest.TestCase):
         self.assertTrue(results[0]["share_url"].startswith("/activity/home?share_token="))
         self.assertNotIn("page=p1", results[0]["share_url"])
         self.assertEqual(results[-1]["daily_state"]["share_reward_count_today"], 3)
-        self.assertEqual(results[-1]["daily_state"]["remaining_draw_count"], 1003)
+        self.assertEqual(results[-1]["daily_state"]["remaining_draw_count"], 4)
 
     def test_claimed_coupon_appears_in_reward_center_and_gift_is_last(self):
         session = self._create_session()
@@ -702,6 +702,7 @@ class ActivityApiFlowTests(unittest.TestCase):
 
     def test_same_mobile_can_receive_same_coupon_again_for_new_draw(self):
         session = self._create_session()
+        self._set_draw_chance(session["user"]["user_id"], 2)
         first_draw = self._draw_with_reward(session["session_token"], "discount_75")
         first_claim = self.client.post(
             "/api/benefit/claim",
@@ -735,6 +736,7 @@ class ActivityApiFlowTests(unittest.TestCase):
 
     def test_reward_center_uses_latest_issued_claim_identity_for_coupon_action(self):
         session = self._create_session()
+        self._set_draw_chance(session["user"]["user_id"], 2)
 
         first_draw = self._draw_with_reward(session["session_token"], "coupon_20")
         first_claim = self.client.post(

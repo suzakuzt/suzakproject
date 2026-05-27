@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS activity_config (
   status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'active', 'paused', 'ended')),
   start_at TEXT,
   end_at TEXT,
-  daily_default_chance INTEGER NOT NULL DEFAULT 1000 CHECK (daily_default_chance >= 0),
+  daily_default_chance INTEGER NOT NULL DEFAULT 1 CHECK (daily_default_chance >= 0),
   daily_share_bonus_limit INTEGER NOT NULL DEFAULT 3 CHECK (daily_share_bonus_limit >= 0),
   share_target INTEGER NOT NULL DEFAULT 5 CHECK (share_target >= 0),
   checkin_target INTEGER NOT NULL DEFAULT 7 CHECK (checkin_target >= 0),

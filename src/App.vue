@@ -13,7 +13,7 @@ const props = defineProps({
   },
   initialChance: {
     type: Number,
-    default: 1000,
+    default: 1,
   },
   initialShareRewardCount: {
     type: Number,

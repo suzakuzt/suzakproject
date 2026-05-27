@@ -3,7 +3,7 @@ import { activityApi } from '../api/activityApi'
 import { MINI_PROGRAM_COUPON_PAGE, goMiniProgramCouponPage } from '../utils/miniProgramBridge'
 
 const MAX_DAILY_SHARE_REWARDS = 3
-const DEFAULT_DRAW_CHANCE = 1000
+const DEFAULT_DRAW_CHANCE = 1
 const TIP_VISIBLE_MS = 3000
 const CLAIMED_BENEFIT_REWARD_REDIRECT_MS = 2000
 const CLAIMED_BENEFIT_REWARD_REDIRECT_MESSAGE = '即将跳转到我的考运进度'
@@ -241,7 +241,7 @@ const DEFAULT_P7_RULES = {
   rules: [
     {
       rule_no: 1,
-      content: '用户每日默认获得 1000 次抽签机会。',
+      content: '用户每日默认获得 1 次抽签机会。',
     },
     {
       rule_no: 2,
@@ -325,7 +325,7 @@ Object.assign(DEFAULT_P7_RULES, {
   page_title: '活动规则',
   subtitle: '一举高中 · 六月牛气加油签',
   rules: [
-    { rule_no: 1, content: '用户每日默认获得 1000 次抽签机会。' },
+    { rule_no: 1, content: '用户每日默认获得 1 次抽签机会。' },
     { rule_no: 2, content: '完成抽签后，可根据结果领取对应优惠券福利。' },
     { rule_no: 3, content: '分享活动并带来好友完成抽签，可获得额外抽签机会。' },
     { rule_no: 4, content: '每日分享奖励最多 3 次，超出后不再增加抽签机会。' },

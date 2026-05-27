@@ -135,11 +135,11 @@ describe('P1 activity home', () => {
     expect(contents).not.toContain(legacyCouponPage)
   })
 
-  it('renders the confirmed P1 home copy with 1000 default draw chances', () => {
+  it('renders the confirmed P1 home copy with 1 default draw chance', () => {
     const wrapper = mountHome()
 
     expect(wrapper.text()).toContain('立即摇签')
-    expect(wrapper.text()).toContain('我的摇签机会 1000次')
+    expect(wrapper.text()).toContain('我的摇签机会 1次')
     expect(wrapper.text()).toContain('活动规则')
     expect(wrapper.get('[data-testid="home-rewards-entry"]').text()).toBe('每日打卡')
     expect(wrapper.text()).toContain('分享获取次数')
@@ -1212,7 +1212,7 @@ describe('P1 activity home', () => {
     const p7Source = `${initialP7Defaults}\n${p7Overrides}`
 
     expect(p7Source).toContain('活动规则')
-    expect(p7Source).toContain('用户每日默认获得 1000 次抽签机会。')
+    expect(p7Source).toContain('用户每日默认获得 1 次抽签机会。')
     expect(p7Source).toContain('扫码添加企微')
     expect(p7Source).not.toMatch(/闁|閹|濞|娑|杩斿|\?\?\?/)
   })

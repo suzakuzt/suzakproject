@@ -141,7 +141,7 @@ class ActivityRepositoryTests(unittest.TestCase):
             config = repo.get_activity_state_config("gaokao_lucky_sign_2026")
 
         self.assertEqual(config["activity_code"], "gaokao_lucky_sign_2026")
-        self.assertEqual(config["daily_default_chance"], 1000)
+        self.assertEqual(config["daily_default_chance"], 1)
         self.assertEqual(config["daily_share_bonus_limit"], 3)
         self.assertEqual(config["share_target"], 5)
         self.assertEqual(config["checkin_target"], 7)
@@ -209,7 +209,7 @@ class HealthStatusTests(unittest.TestCase):
         self.assertEqual(status["database"]["connected"], True)
         self.assertEqual(status["database"]["table_count"], 18)
         self.assertEqual(status["activity"]["activity_code"], "gaokao_lucky_sign_2026")
-        self.assertEqual(status["activity"]["daily_default_chance"], 1000)
+        self.assertEqual(status["activity"]["daily_default_chance"], 1)
         self.assertEqual(status["seed_counts"]["reward_count"], 7)
 
     def test_build_health_status_uses_mysql_engine_connection_without_sqlite_path(self):
