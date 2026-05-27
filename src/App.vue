@@ -4,6 +4,7 @@ import { activityApi } from './api/activityApi'
 import { useP1Activity } from './composables/useP1Activity'
 import { goMiniProgramPosterSavePage } from './utils/miniProgramBridge'
 import { installRuntimeMonitor } from './utils/runtimeMonitor'
+import { createShareQrcodeDataUrl } from './utils/shareQrcode'
 
 const props = defineProps({
   initialPage: {
@@ -477,6 +478,9 @@ const p7QrcodeSrc = computed(() => {
 
   return p7Asset(qrcode)
 })
+const sharePosterQrcodeSrc = ref('')
+const sharePosterUrl = ref('')
+const activityPosterQrcodeSrc = computed(() => sharePosterQrcodeSrc.value || p7QrcodeSrc.value)
 const ACTIVITY_SHARE_POSTER_WIDTH = 941
 const ACTIVITY_SHARE_POSTER_HEIGHT = 1672
 const ACTIVITY_SHARE_POSTER_QR = {
@@ -502,6 +506,26 @@ const toAbsolutePosterUrl = (posterUrl) => {
   }
 
   return new URL(posterUrl, window.location.origin).href
+}
+const resetSharePosterQrcode = () => {
+  sharePosterQrcodeSrc.value = ''
+  sharePosterUrl.value = ''
+}
+const updateSharePosterQrcode = async (shareResult) => {
+  const shareUrl = shareResult?.share_url
+  if (!shareUrl) {
+    return false
+  }
+
+  const absoluteShareUrl = toAbsolutePosterUrl(shareUrl)
+  sharePosterUrl.value = absoluteShareUrl
+  try {
+    sharePosterQrcodeSrc.value = await createShareQrcodeDataUrl(absoluteShareUrl)
+    return Boolean(sharePosterQrcodeSrc.value)
+  } catch {
+    sharePosterQrcodeSrc.value = ''
+    return false
+  }
 }
 const loadPosterCanvasImage = (src) =>
   new Promise((resolve, reject) => {
@@ -623,8 +647,8 @@ const renderActivityPosterCanvas = async () => {
   }
 
   try {
-    if (p7QrcodeSrc.value) {
-      const qrcode = await loadPosterCanvasImage(p7QrcodeSrc.value)
+    if (activityPosterQrcodeSrc.value) {
+      const qrcode = await loadPosterCanvasImage(activityPosterQrcodeSrc.value)
       const qrSize = width * ACTIVITY_SHARE_POSTER_QR.size
       const qrX = width * ACTIVITY_SHARE_POSTER_QR.left
       const qrY = height * ACTIVITY_SHARE_POSTER_QR.top
@@ -656,6 +680,44 @@ const prepareActivityPosterPreview = async (setPreview, isCurrent) => {
   } catch {
     // Keep the static poster visible if preview composition fails.
   }
+}
+const prepareHomeSharePosterPreview = () =>
+  prepareActivityPosterPreview(
+    (src) => {
+      sharePosterPreviewSrc.value = typeof src === 'function' ? src(sharePosterPreviewSrc.value) : src
+    },
+    () => showShareGuide.value,
+  )
+const prepareP2SharePosterPreview = () =>
+  prepareActivityPosterPreview(
+    (src) => {
+      p2PosterPreviewSrc.value = typeof src === 'function' ? src(p2PosterPreviewSrc.value) : src
+    },
+    () => p2Panel.value === 'poster',
+  )
+const completeShareForPoster = async (shareChannel) => {
+  const result = await completeShare(shareChannel)
+  return updateSharePosterQrcode(result)
+}
+const openHomeSharePoster = () => {
+  resetSharePosterQrcode()
+  openShareGuide()
+  void completeShareForPoster('home_share').then((hasTrackedQrcode) => {
+    if (hasTrackedQrcode && showShareGuide.value) {
+      sharePosterPreviewSrc.value = ''
+      prepareHomeSharePosterPreview()
+    }
+  })
+}
+const openResultSharePoster = () => {
+  resetSharePosterQrcode()
+  openP2Poster()
+  void completeShareForPoster('result_share').then((hasTrackedQrcode) => {
+    if (hasTrackedQrcode && p2Panel.value === 'poster') {
+      p2PosterPreviewSrc.value = ''
+      prepareP2SharePosterPreview()
+    }
+  })
 }
 const saveActivityPoster = async ({ posterType, setMessage, setPreview, shareChannel = 'poster_save' }) => {
   setMessage('保存中...')
@@ -789,6 +851,14 @@ const handleP7QrcodeError = () => {
   p7QrcodeFailed.value = true
   trackP7QrcodeLoadFail()
 }
+const handleActivityPosterQrcodeError = () => {
+  if (sharePosterQrcodeSrc.value) {
+    sharePosterQrcodeSrc.value = ''
+    return
+  }
+
+  handleP7QrcodeError()
+}
 const handleP8QrcodeError = () => {
   p8QrcodeFailed.value = true
   trackP8QrcodeLoadFail()
@@ -798,30 +868,22 @@ watch(showShareGuide, (visible) => {
   if (!visible) {
     sharePosterSaveMessage.value = ''
     sharePosterPreviewSrc.value = ''
+    resetSharePosterQrcode()
     return
   }
 
-  prepareActivityPosterPreview(
-    (src) => {
-      sharePosterPreviewSrc.value = typeof src === 'function' ? src(sharePosterPreviewSrc.value) : src
-    },
-    () => showShareGuide.value,
-  )
+  prepareHomeSharePosterPreview()
 })
 
 watch(p2Panel, (panel) => {
   if (panel !== 'poster') {
     p2PosterSaveMessage.value = ''
     p2PosterPreviewSrc.value = ''
+    resetSharePosterQrcode()
     return
   }
 
-  prepareActivityPosterPreview(
-    (src) => {
-      p2PosterPreviewSrc.value = typeof src === 'function' ? src(p2PosterPreviewSrc.value) : src
-    },
-    () => p2Panel.value === 'poster',
-  )
+  prepareP2SharePosterPreview()
 })
 
 watch(currentPage, () => {
@@ -830,6 +892,7 @@ watch(currentPage, () => {
   sharePosterPreviewSrc.value = ''
   p2PosterSaveMessage.value = ''
   p2PosterPreviewSrc.value = ''
+  resetSharePosterQrcode()
   requestAnimationFrame(() => {
     const scroller = document.scrollingElement || document.documentElement
     if (scroller) {
@@ -948,7 +1011,7 @@ onBeforeUnmount(() => {
       <nav class="bottom-nav" aria-label="首页快捷入口">
         <button data-testid="home-rewards-entry" type="button" @click="goRewards">每日打卡</button>
         <p aria-live="polite">{{ chanceText }}</p>
-        <button data-testid="share-entry" type="button" @click="openShareGuide">分享获取次数</button>
+        <button data-testid="share-entry" type="button" @click="openHomeSharePoster">分享获取次数</button>
       </nav>
     </section>
 
@@ -978,11 +1041,12 @@ onBeforeUnmount(() => {
           />
           <span class="activity-share-poster-qrcode">
             <img
-              v-if="p7QrcodeSrc"
+              v-if="activityPosterQrcodeSrc"
               data-testid="home-share-qrcode"
-              :src="p7QrcodeSrc"
+              :src="activityPosterQrcodeSrc"
               alt="活动二维码"
-              @error="handleP7QrcodeError"
+              :data-share-url="sharePosterUrl"
+              @error="handleActivityPosterQrcodeError"
             />
             <span v-else>二维码暂未配置</span>
           </span>
@@ -1128,7 +1192,7 @@ onBeforeUnmount(() => {
           :class="{ 'is-explain-open': p4ExplainVisible }"
           data-testid="share-poster"
           type="button"
-          @click="openP2Poster"
+          @click="openResultSharePoster"
         >
           分享得好礼
         </button>
@@ -1166,11 +1230,12 @@ onBeforeUnmount(() => {
           />
           <span class="activity-share-poster-qrcode">
             <img
-              v-if="p7QrcodeSrc"
+              v-if="activityPosterQrcodeSrc"
               data-testid="p2-poster-qrcode"
-              :src="p7QrcodeSrc"
+              :src="activityPosterQrcodeSrc"
               alt="活动二维码"
-              @error="handleP7QrcodeError"
+              :data-share-url="sharePosterUrl"
+              @error="handleActivityPosterQrcodeError"
             />
             <span v-else>二维码暂未配置</span>
           </span>

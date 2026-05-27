@@ -18,6 +18,12 @@ vi.mock('./components/HelloWorld.vue', () => ({
   },
 }))
 
+vi.mock('qrcode', () => ({
+  default: {
+    toString: vi.fn(async (value) => `<svg xmlns="http://www.w3.org/2000/svg"><text>${value}</text></svg>`),
+  },
+}))
+
 const mountHome = (props = {}) => {
   window.history.replaceState({}, '', '/activity/home')
 
@@ -438,6 +444,66 @@ describe('P1 activity home', () => {
     await poster.get('[data-testid="close-p2-panel"]').trigger('click')
 
     expect(wrapper.find('[data-testid="p2-poster-dialog"]').exists()).toBe(false)
+  })
+
+  it('adds a draw chance and uses the tracked share link when opening the home share poster', async () => {
+    const createSession = vi.fn().mockResolvedValue({ session_token: 'sess_home_share' })
+    const recordShare = vi.fn().mockResolvedValue({
+      success: true,
+      share_token: 'SH_HOME_TEST',
+      share_url: '/activity/home?share_token=SH_HOME_TEST',
+      reward_granted: true,
+      daily_state: {
+        remaining_draw_count: 1001,
+        share_reward_count_today: 1,
+      },
+    })
+    const wrapper = mountHome({
+      apiClient: {
+        createSession,
+        recordShare,
+        trackEvent: vi.fn().mockResolvedValue({}),
+      },
+    })
+
+    await wrapper.get('[data-testid="share-entry"]').trigger('click')
+    await flushPromises()
+
+    expect(recordShare).toHaveBeenCalledWith({ session_token: 'sess_home_share', share_channel: 'home_share' })
+    expect(wrapper.text()).toContain('1001')
+    expect(decodeURIComponent(wrapper.get('[data-testid="home-share-qrcode"]').attributes('src'))).toContain(
+      '/activity/home?share_token=SH_HOME_TEST',
+    )
+  })
+
+  it('adds a draw chance and uses the tracked share link when opening the result share poster', async () => {
+    const createSession = vi.fn().mockResolvedValue({ session_token: 'sess_result_share' })
+    const recordShare = vi.fn().mockResolvedValue({
+      success: true,
+      share_token: 'SH_RESULT_TEST',
+      share_url: '/activity/home?share_token=SH_RESULT_TEST',
+      reward_granted: true,
+      daily_state: {
+        remaining_draw_count: 1002,
+        share_reward_count_today: 1,
+      },
+    })
+    const wrapper = mountResult({
+      apiClient: {
+        createSession,
+        recordShare,
+        trackEvent: vi.fn().mockResolvedValue({}),
+      },
+    })
+
+    await wrapper.get('[data-testid="share-poster"]').trigger('click')
+    await flushPromises()
+
+    expect(recordShare).toHaveBeenCalledWith({ session_token: 'sess_result_share', share_channel: 'result_share' })
+    expect(wrapper.get('[data-testid="p2-poster-dialog"]').exists()).toBe(true)
+    expect(decodeURIComponent(wrapper.get('[data-testid="p2-poster-qrcode"]').attributes('src'))).toContain(
+      '/activity/home?share_token=SH_RESULT_TEST',
+    )
   })
 
   it('uses the approved 2026-05-26 activity poster asset for every share entry', async () => {

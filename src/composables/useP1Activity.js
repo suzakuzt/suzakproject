@@ -1903,16 +1903,33 @@ export function useP1Activity(options = {}) {
         trackEvent(result.reward_granted ? 'share_chance_add_success' : 'share_chance_limit_reached', {
           share_token: result.share_token,
         })
+        return result
       } catch {
         trackEvent('share_chance_add_fail')
       }
-      return
+      return null
     }
 
     if (shareRewardCount.value < MAX_DAILY_SHARE_REWARDS) {
       shareRewardCount.value += 1
       drawChance.value += 1
       trackEvent('share_chance_add_success')
+      return {
+        reward_granted: true,
+        daily_state: {
+          remaining_draw_count: drawChance.value,
+          share_reward_count_today: shareRewardCount.value,
+        },
+      }
+    }
+
+    trackEvent('share_chance_limit_reached')
+    return {
+      reward_granted: false,
+      daily_state: {
+        remaining_draw_count: drawChance.value,
+        share_reward_count_today: shareRewardCount.value,
+      },
     }
   }
 
