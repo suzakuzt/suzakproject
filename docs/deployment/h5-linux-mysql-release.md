@@ -10,8 +10,8 @@
 
 ## Runtime
 
-- Backend command: `/root/suzakproject/.venv/bin/uvicorn backend.app.main:app --host 127.0.0.1 --port 8000`
-- Backend working directory: `/root/suzakproject`
+- Backend command: `/root/festival-activity/.venv/bin/uvicorn backend.app.main:app --host 127.0.0.1 --port 8000`
+- Backend working directory: `/root/festival-activity`
 - Nginx config path: `/etc/nginx/sites-available/gaokao-h5`
 - Frontend dist deploy path: `/var/www/gaokao-h5`
 - Nginx static root: `/var/www/gaokao-h5`
@@ -49,18 +49,18 @@
 2. Restore the previous frontend files under `/var/www/gaokao-h5` from the last known-good artifact.
 3. Restore the previous backend Git revision:
    ```bash
-   cd /root/suzakproject
+   cd /root/festival-activity
    git fetch origin
    git checkout <previous-good-commit>
    ```
 4. Reinstall dependencies only if `backend/requirements.txt` changed:
    ```bash
-   /root/suzakproject/.venv/bin/pip install -r backend/requirements.txt
+   /root/festival-activity/.venv/bin/pip install -r backend/requirements.txt
    ```
 5. Restart backend:
    ```bash
    pkill -f "uvicorn backend.app.main:app"
-   cd /root/suzakproject
+   cd /root/festival-activity
    mkdir -p runtime
    setsid .venv/bin/uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 > runtime/backend.log 2>&1 < /dev/null &
    ```
