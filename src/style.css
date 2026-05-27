@@ -2024,9 +2024,9 @@ button {
   display: block;
   width: 100%;
   max-height: min(calc(100svh - 170px - var(--safe-top) - var(--safe-bottom)), 640px);
-  border: 2px solid #080000;
-  border-radius: 8px;
-  background: #f7ddb1;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   object-fit: contain;
   box-shadow: 0 20px 48px rgba(34, 0, 0, 0.36);
   -webkit-touch-callout: default;
