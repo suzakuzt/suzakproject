@@ -1,42 +1,68 @@
 export const MINI_PROGRAM_COUPON_PAGE = '/pages/my-coupon/index'
 export const MINI_PROGRAM_POSTER_SAVE_PAGE = '/pages/h5-activity/poster-save'
 
+const MINI_PROGRAM_ENV_TIMEOUT_MS = 250
 const getMiniProgramBridge = () => (typeof window === 'undefined' ? undefined : window.wx?.miniProgram)
 
 const isMiniProgramWebView = () =>
   new Promise((resolve) => {
     const miniProgramBridge = getMiniProgramBridge()
+    let settled = false
+    let envTimer
 
     if (!miniProgramBridge) {
       resolve(false)
       return
     }
 
+    const finish = (value) => {
+      if (settled) {
+        return
+      }
+
+      settled = true
+      if (envTimer) {
+        window.clearTimeout(envTimer)
+      }
+      resolve(value)
+    }
+
     if (typeof miniProgramBridge.getEnv === 'function') {
+      envTimer = window.setTimeout(() => finish(false), MINI_PROGRAM_ENV_TIMEOUT_MS)
       try {
         miniProgramBridge.getEnv((res) => {
-          resolve(Boolean(res?.miniprogram))
+          finish(Boolean(res?.miniprogram))
         })
       } catch {
-        resolve(false)
+        finish(false)
       }
       return
     }
 
-    resolve(typeof window !== 'undefined' && window.__wxjs_environment === 'miniprogram')
+    finish(typeof window !== 'undefined' && window.__wxjs_environment === 'miniprogram')
   })
 
-export function goMiniProgramCouponPage(targetUrl = MINI_PROGRAM_COUPON_PAGE) {
+export async function goMiniProgramCouponPage(targetUrl = MINI_PROGRAM_COUPON_PAGE, options = {}) {
   const miniProgramBridge = getMiniProgramBridge()
 
-  if (typeof miniProgramBridge?.navigateTo === 'function') {
-    miniProgramBridge.navigateTo({
-      url: targetUrl,
-    })
-    return true
+  if (!targetUrl || typeof miniProgramBridge?.navigateTo !== 'function') {
+    return false
   }
 
-  return false
+  if (!(await isMiniProgramWebView())) {
+    return false
+  }
+
+  const navigateOptions = {
+    url: targetUrl,
+  }
+
+  if (typeof options.fail === 'function') {
+    navigateOptions.fail = options.fail
+  }
+
+  miniProgramBridge.navigateTo(navigateOptions)
+  return true
 }
 
 export function buildMiniProgramPosterSaveUrl(posterUrl) {

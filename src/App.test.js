@@ -4,6 +4,7 @@ import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import App from './App.vue'
+import { activityApi } from './api/activityApi'
 import {
   MINI_PROGRAM_COUPON_PAGE,
   MINI_PROGRAM_POSTER_SAVE_PAGE,
@@ -62,6 +63,7 @@ describe('P1 activity home', () => {
   beforeEach(() => {
     window.sessionStorage.clear()
     delete window.wx
+    delete window.__wxjs_environment
   })
 
   it('loads the WeChat JS-SDK for mini-program web-view navigation', () => {
@@ -108,8 +110,9 @@ describe('P1 activity home', () => {
     expect(script).toContain('webp')
   })
 
-  it('navigates to the mini-program coupon page only when the web-view bridge exists', () => {
+  it('navigates to the mini-program coupon page only when the web-view bridge exists', async () => {
     const navigateTo = vi.fn()
+    const fail = vi.fn()
     window.wx = {
       miniProgram: {
         getEnv: (callback) => callback({ miniprogram: true }),
@@ -117,13 +120,44 @@ describe('P1 activity home', () => {
       },
     }
 
-    expect(goMiniProgramCouponPage()).toBe(true)
+    await expect(goMiniProgramCouponPage()).resolves.toBe(true)
     expect(navigateTo).toHaveBeenCalledWith({ url: MINI_PROGRAM_COUPON_PAGE })
-    expect(goMiniProgramCouponPage(`${MINI_PROGRAM_COUPON_PAGE}?claim_token=ct_test`)).toBe(true)
-    expect(navigateTo).toHaveBeenLastCalledWith({ url: `${MINI_PROGRAM_COUPON_PAGE}?claim_token=ct_test` })
+    await expect(goMiniProgramCouponPage(`${MINI_PROGRAM_COUPON_PAGE}?claim_token=ct_test`, { fail })).resolves.toBe(true)
+    expect(navigateTo).toHaveBeenLastCalledWith(
+      expect.objectContaining({ url: `${MINI_PROGRAM_COUPON_PAGE}?claim_token=ct_test`, fail }),
+    )
+
+    window.wx = {
+      miniProgram: {
+        navigateTo,
+      },
+    }
+    await expect(goMiniProgramCouponPage()).resolves.toBe(false)
 
     delete window.wx
-    expect(goMiniProgramCouponPage()).toBe(false)
+    await expect(goMiniProgramCouponPage()).resolves.toBe(false)
+  })
+
+  it('falls back instead of waiting forever when the mini-program environment callback never returns', async () => {
+    vi.useFakeTimers()
+    try {
+      const navigateTo = vi.fn()
+      const resolved = vi.fn()
+      window.wx = {
+        miniProgram: {
+          getEnv: vi.fn(),
+          navigateTo,
+        },
+      }
+
+      goMiniProgramCouponPage().then(resolved)
+      await vi.advanceTimersByTimeAsync(350)
+
+      expect(resolved).toHaveBeenCalledWith(false)
+      expect(navigateTo).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('navigates to the mini-program poster-save page with an encoded poster image url', async () => {
@@ -819,6 +853,7 @@ describe('P1 activity home', () => {
     const couponTarget = `${MINI_PROGRAM_COUPON_PAGE}?claim_token=ct_test&claim_no=CL_TEST`
     window.wx = {
       miniProgram: {
+        getEnv: (callback) => callback({ miniprogram: true }),
         navigateTo,
       },
     }
@@ -861,10 +896,13 @@ describe('P1 activity home', () => {
         claim_channel: 'h5',
       }),
     )
-    expect(navigateTo).toHaveBeenCalledWith({ url: couponTarget })
+    expect(navigateTo).toHaveBeenCalledWith(expect.objectContaining({ url: couponTarget }))
+    expect(wrapper.find('[data-testid="mini-program-fallback-dialog"]').exists()).toBe(false)
+    await new Promise((resolve) => setTimeout(resolve, 1100))
+    expect(wrapper.find('[data-testid="mini-program-fallback-dialog"]').exists()).toBe(false)
   })
 
-  it('shows a successful claim hint instead of redirecting outside mini-program web-view', async () => {
+  it('shows the mini-program QR fallback after a successful claim outside mini-program web-view', async () => {
     const createSession = vi.fn().mockResolvedValue({ session_token: 'sess_test' })
     const claimBenefit = vi.fn().mockResolvedValue({
       claimStatus: 'claimed',
@@ -893,7 +931,81 @@ describe('P1 activity home', () => {
     await wrapper.get('[data-testid="p5-submit-claim"]').trigger('submit')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('领取成功，请前往小程序我的优惠券查看')
+    expect(wrapper.get('[data-testid="mini-program-fallback-dialog"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="mini-program-fallback-tip"]').text()).toBe('领取成功，扫码-进入小程序')
+    expect(wrapper.find('[data-testid="p5-mobile-claim-popup"]').exists()).toBe(false)
+  })
+
+  it('continues to the mini-program QR fallback when mobile claim returns a 502 issue error', async () => {
+    const createSession = vi.fn().mockResolvedValue({ session_token: 'sess_test' })
+    const issueError = new Error('发券失败，请稍后重试')
+    issueError.status = 502
+    const claimBenefit = vi.fn().mockRejectedValue(issueError)
+    const wrapper = mountResult({
+      apiClient: {
+        createSession,
+        claimBenefit,
+        trackEvent: vi.fn().mockResolvedValue({}),
+      },
+      initialP4Detail: {
+        benefit: {
+          rewardCode: 'coupon_30',
+          reward: {
+            couponId: 'coupon_30',
+            amountText: '30',
+            couponName: '无门槛30元券',
+          },
+        },
+      },
+    })
+
+    await wrapper.get('[data-testid="p2-claim-benefit"]').trigger('click')
+    await wrapper.get('[data-testid="p5-mobile-input"]').setValue('13040695156')
+    await wrapper.get('[data-testid="p5-submit-claim"]').trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('发券失败')
+    expect(wrapper.text()).toContain('已领取')
+    expect(wrapper.get('[data-testid="mini-program-fallback-dialog"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="mini-program-fallback-tip"]').text()).toBe('领取成功，扫码-进入小程序')
+    expect(wrapper.find('[data-testid="p5-mobile-claim-popup"]').exists()).toBe(false)
+  })
+
+  it('redirects to mini-program without QR fallback when a 502 issue fallback can navigate', async () => {
+    const navigateTo = vi.fn()
+    window.wx = {
+      miniProgram: {
+        getEnv: (callback) => callback({ miniprogram: true }),
+        navigateTo,
+      },
+    }
+    const createSession = vi.fn().mockResolvedValue({ session_token: 'sess_test' })
+    const issueError = new Error('发券失败，请稍后重试')
+    issueError.status = 502
+    const claimBenefit = vi.fn().mockRejectedValue(issueError)
+    const wrapper = mountResult({
+      apiClient: {
+        createSession,
+        claimBenefit,
+        trackEvent: vi.fn().mockResolvedValue({}),
+      },
+      initialP4Detail: {
+        benefit: {
+          rewardCode: 'coupon_30',
+        },
+      },
+    })
+
+    await wrapper.get('[data-testid="p2-claim-benefit"]').trigger('click')
+    await wrapper.get('[data-testid="p5-mobile-input"]').setValue('13040695156')
+    await wrapper.get('[data-testid="p5-submit-claim"]').trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('发券失败')
+    expect(navigateTo).toHaveBeenCalledWith(expect.objectContaining({ url: MINI_PROGRAM_COUPON_PAGE }))
+    expect(wrapper.find('[data-testid="mini-program-fallback-dialog"]').exists()).toBe(false)
+    await new Promise((resolve) => setTimeout(resolve, 1100))
+    expect(wrapper.find('[data-testid="mini-program-fallback-dialog"]').exists()).toBe(false)
   })
 
   it('does not redirect to the coupon page when mobile claim fails', async () => {
@@ -925,6 +1037,34 @@ describe('P1 activity home', () => {
 
     expect(navigateTo).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('手机号已领取过')
+  })
+
+  it('exposes API response status when claim requests fail', async () => {
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 502,
+      text: vi.fn().mockResolvedValue('{"success":false,"message":"发券失败，请稍后重试","detail":"发券失败，请稍后重试"}'),
+    })
+
+    try {
+      await expect(
+        activityApi.claimBenefit({
+          session_token: 'sess_test',
+          draw_id: 10,
+          reward_code: 'coupon_30',
+          mobile: '13040695156',
+          claim_channel: 'h5',
+        }),
+      ).rejects.toMatchObject({
+        status: 502,
+        payload: expect.objectContaining({
+          detail: '发券失败，请稍后重试',
+        }),
+      })
+    } finally {
+      globalThis.fetch = originalFetch
+    }
   })
 
   it('reuses the combined result card when opening the legacy P4 route directly', () => {
@@ -1309,6 +1449,9 @@ describe('P1 activity home', () => {
   it('changes P6 coupon buttons from claim to use only after the coupon is claimed', () => {
     const wrapper = mount(App, {
       props: {
+        apiClient: {
+          trackEvent: vi.fn().mockResolvedValue({}),
+        },
         initialPage: 'p6',
         initialP6Center: {
           claimed_rewards: [
@@ -1335,13 +1478,16 @@ describe('P1 activity home', () => {
     expect(buttons.slice(0, 5)).toEqual(['去使用', '去领取', '去领取', '去领取', '去领取'])
   })
 
-  it('shows backend-state feedback when using claimed and unclaimed P6 coupon buttons', async () => {
+  it('shows the mini-program QR fallback when claimed P6 coupon navigation is unavailable', async () => {
     const navigateTo = vi.fn()
     window.wx = {
       miniProgram: {},
     }
     const wrapper = mount(App, {
       props: {
+        apiClient: {
+          trackEvent: vi.fn().mockResolvedValue({}),
+        },
         initialPage: 'p6',
         initialP6Center: {
           claimed_rewards: [
@@ -1367,15 +1513,70 @@ describe('P1 activity home', () => {
     expect(buttons[0].text()).toBe('去使用')
     expect(buttons[0].attributes('disabled')).toBeUndefined()
     await buttons[0].trigger('click')
+    await flushPromises()
 
     expect(navigateTo).not.toHaveBeenCalled()
-    expect(wrapper.get('.p6-action-tip').text()).toContain('已领取，请前往小程序我的优惠券查看')
+    expect(wrapper.get('[data-testid="mini-program-fallback-dialog"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="mini-program-fallback-tip"]').text()).toBe('扫码-进入小程序')
+    expect(wrapper.get('[data-testid="mini-program-fallback-qrcode"]').attributes('src')).toContain(
+      'mini_program_qrcode.jpg',
+    )
+    await wrapper.get('[data-testid="mini-program-fallback-close"]').trigger('click')
+    expect(wrapper.find('[data-testid="mini-program-fallback-dialog"]').exists()).toBe(false)
 
     expect(buttons[1].text()).toBe('去领取')
     expect(buttons[1].attributes('disabled')).toBeUndefined()
     await buttons[1].trigger('click')
 
     expect(wrapper.get('.p6-action-tip').text()).toContain('请先完成抽签并领取成功')
+  })
+
+  it('keeps the default mini-program coupon target when a claimed P6 coupon has an empty action target', async () => {
+    window.wx = {
+      miniProgram: {},
+    }
+    const trackEvent = vi.fn().mockResolvedValue({})
+    const wrapper = mount(App, {
+      props: {
+        apiClient: {
+          trackEvent,
+        },
+        initialPage: 'p6',
+        initialP6Center: {
+          claimed_rewards: [
+            {
+              reward_code: 'coupon_10',
+              reward_id: 'coupon_10_claimed',
+              reward_type: 'coupon',
+              title: '10',
+              unit_text: '元',
+              desc: '无门槛券',
+              status: 'unused',
+              action: {
+                type: 'mini_program_coupon_package',
+                target: '',
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const buttons = wrapper.findAll('[data-testid="p6-reward-action"]')
+
+    expect(buttons[0].text()).toBe('去使用')
+    await buttons[0].trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="mini-program-fallback-dialog"]').exists()).toBe(true)
+    expect(trackEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event_name: 'mini_program_qrcode_fallback_view',
+        event_payload: expect.objectContaining({
+          target: MINI_PROGRAM_COUPON_PAGE,
+        }),
+      }),
+    )
   })
 
   it('uses qualification states for the P6 gift box action', () => {

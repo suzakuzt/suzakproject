@@ -513,6 +513,51 @@ button {
   margin: 0 0 18px;
 }
 
+.mini-program-fallback-mask {
+  place-items: center;
+}
+
+.mini-program-fallback-dialog {
+  position: relative;
+  width: min(82vw, 320px);
+  padding: 24px 22px 22px;
+  border: 1px solid rgba(255, 219, 151, 0.9);
+  border-radius: 8px;
+  color: #6a170d;
+  text-align: center;
+  background: linear-gradient(180deg, #fff3d0, #ffd78b);
+  box-shadow: 0 22px 60px rgba(31, 0, 0, 0.42);
+}
+
+.mini-program-fallback-dialog h2 {
+  margin: 0 0 14px;
+  color: #9f1308;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: 0;
+  line-height: 1.25;
+}
+
+.mini-program-fallback-dialog p {
+  margin: 14px 0 0;
+  color: #7b2d1a;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.mini-program-fallback-qrcode {
+  display: block;
+  width: min(62vw, 224px);
+  aspect-ratio: 1;
+  margin: 0 auto;
+  border: 8px solid #fff;
+  border-radius: 8px;
+  object-fit: contain;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(74, 11, 0, 0.18);
+}
+
 .dialog-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;

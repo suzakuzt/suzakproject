@@ -474,6 +474,7 @@ const P6_FIXED_REWARD_CODE_SET = new Set(P6_FIXED_REWARD_CODES)
 const P6_REWARD_CLAIM_TEXT = '\u53bb\u9886\u53d6'
 const P6_REWARD_USE_TEXT = '\u53bb\u4f7f\u7528'
 const P6_GIFT_USE_TEXT = '\u53bb\u67e5\u770b'
+const CLAIM_ISSUE_FALLBACK_STATUS = 502
 const MOBILE_PATTERN = /^1[3-9]\d{9}$/
 
 const normalizeP6Reward = (reward = {}) => ({
@@ -498,8 +499,8 @@ const mergeP6RewardSlot = (base = {}, reward = {}) => ({
   ...base,
   ...reward,
   action: {
-    ...(base.action ?? {}),
-    ...(reward.action ?? {}),
+    type: reward.action?.type || base.action?.type || 'mini_program_coupon_package',
+    target: reward.action?.target || base.action?.target || MINI_PROGRAM_COUPON_PAGE,
   },
 })
 const resolveP6SlotButtonText = (status) => (status === 'unused' ? P6_REWARD_USE_TEXT : P6_REWARD_CLAIM_TEXT)
@@ -730,6 +731,9 @@ const getClaimErrorMessage = (error) => {
 
   return rawMessage
 }
+const isClaimIssueFallbackError = (error) =>
+  Number(error?.status ?? error?.statusCode ?? error?.response?.status) === CLAIM_ISSUE_FALLBACK_STATUS
+const maskMobile = (mobile = '') => `${mobile.slice(0, 3)}****${mobile.slice(-4)}`
 
 const syncBrowserRoute = (page, { replace = false, preserveSearch = false } = {}) => {
   if (typeof window === 'undefined') {
@@ -820,6 +824,9 @@ export function useP1Activity(options = {}) {
   const p6ActionStatus = ref('idle')
   const p6ActionMessage = ref('')
   const showShareGuide = ref(false)
+  const showMiniProgramFallback = ref(false)
+  const miniProgramFallbackMessage = ref('扫码-进入小程序')
+  const miniProgramFallbackTarget = ref('')
   const tipMessage = ref('')
   const isDrawTemporarilyDisabled = ref(false)
   const showDrawAnimation = ref(false)
@@ -1131,9 +1138,34 @@ export function useP1Activity(options = {}) {
     }).catch(() => {})
   }
 
+  const closeMiniProgramFallback = () => {
+    showMiniProgramFallback.value = false
+    miniProgramFallbackTarget.value = ''
+  }
+
+  const openMiniProgramFallback = (
+    targetUrl = MINI_PROGRAM_COUPON_PAGE,
+    actionType = 'mini_program',
+    message = '扫码-进入小程序',
+  ) => {
+    if (showMiniProgramFallback.value && miniProgramFallbackTarget.value === targetUrl) {
+      return
+    }
+
+    showP5ClaimSuccess.value = false
+    miniProgramFallbackTarget.value = targetUrl || MINI_PROGRAM_COUPON_PAGE
+    miniProgramFallbackMessage.value = message
+    showMiniProgramFallback.value = true
+    trackEvent('mini_program_qrcode_fallback_view', {
+      action_type: actionType,
+      target: miniProgramFallbackTarget.value,
+    })
+  }
+
   const goHome = () => {
     resetDrawAnimation()
     clearP4RewardRedirectTimer()
+    closeMiniProgramFallback()
     setCurrentPage('home')
     p2Panel.value = ''
     clearP4ClaimMessage()
@@ -1576,7 +1608,7 @@ export function useP1Activity(options = {}) {
     p5ClaimStatus.value = 'claimed'
     clearP4ClaimMessage()
     showP5ClaimSuccess.value = true
-    const maskedMobile = p5Result.value.receiver_mobile_masked || p5Result.value.receiverMobileMasked || `${mobile.slice(0, 3)}****${mobile.slice(-4)}`
+    const maskedMobile = p5Result.value.receiver_mobile_masked || p5Result.value.receiverMobileMasked || maskMobile(mobile)
     p5UseMessage.value = `领取成功，已绑定 ${maskedMobile}`
     trackEvent('exclusive_benefit_claim_success')
     trackEvent('benefit_claim_result_render_success')
@@ -1584,8 +1616,25 @@ export function useP1Activity(options = {}) {
       coupon_id: p5Result.value.reward.couponId,
     })
   }
+  const buildP5ClaimIssueFallbackResult = (mobile) =>
+    normalizeP5Result({
+      ...p5Result.value,
+      pageTitle: '领取成功',
+      claimStatus: 'claimed',
+      receiver_mobile_masked: maskMobile(mobile),
+      reward: {
+        ...p5Result.value.reward,
+        couponStatus: 'unused',
+      },
+      action: {
+        ...p5Result.value.action,
+        buttonText: '去使用',
+        type: 'mini_program_coupon_package',
+        target: p5Result.value.action?.target || MINI_PROGRAM_COUPON_PAGE,
+      },
+    })
 
-  const redirectP5ClaimAfterMobileBind = () => {
+  const redirectP5ClaimAfterMobileBind = async ({ fallbackMessage = '领取成功，扫码-进入小程序' } = {}) => {
     const couponTarget =
       p5Result.value.action?.type === 'mini_program_coupon_package' && p5Result.value.action?.target
         ? p5Result.value.action.target
@@ -1598,7 +1647,9 @@ export function useP1Activity(options = {}) {
     })
 
     p5UseStatus.value = 'redirecting'
-    const redirected = goMiniProgramCouponPage(couponTarget)
+    const redirected = await goMiniProgramCouponPage(couponTarget, {
+      fail: () => openMiniProgramFallback(couponTarget, 'mini_program_coupon_package', fallbackMessage),
+    })
     p5UseStatus.value = 'idle'
 
     if (redirected) {
@@ -1614,7 +1665,7 @@ export function useP1Activity(options = {}) {
       return
     }
 
-    p5UseMessage.value = CLAIM_SUCCESS_COUPON_FALLBACK_MESSAGE
+    openMiniProgramFallback(couponTarget, 'mini_program_coupon_package', fallbackMessage)
     trackEvent('use_benefit_redirect_fail', {
       trigger: 'auto_after_mobile_bind',
       action_type: 'mini_program_coupon_package',
@@ -1628,7 +1679,7 @@ export function useP1Activity(options = {}) {
     }
 
     if (p5Result.value.claimStatus === 'claimed') {
-      useP5Benefit()
+      await useP5Benefit()
       return
     }
 
@@ -1658,8 +1709,19 @@ export function useP1Activity(options = {}) {
           claim_channel: 'h5',
         })
         markP5ClaimSuccess(result, mobile)
-        redirectP5ClaimAfterMobileBind()
+        await redirectP5ClaimAfterMobileBind()
       } catch (error) {
+        if (isClaimIssueFallbackError(error)) {
+          markP5ClaimSuccess(buildP5ClaimIssueFallbackResult(mobile), mobile)
+          trackEvent('exclusive_benefit_claim_issue_fallback', {
+            status: CLAIM_ISSUE_FALLBACK_STATUS,
+            draw_id: latestDrawId.value,
+            reward_code: getVisibleP5RewardCode(),
+          })
+          await redirectP5ClaimAfterMobileBind({ fallbackMessage: '领取成功，扫码-进入小程序' })
+          return
+        }
+
         p4ClaimStatus.value = 'unclaimed'
         p5ClaimStatus.value = 'input'
         p5UseMessage.value = getClaimErrorMessage(error)
@@ -1695,28 +1757,43 @@ export function useP1Activity(options = {}) {
     p5MobileError.value = ''
   }
 
-  const runConfiguredAction = (action, messageRef, fallbackMessage) => {
+  const runConfiguredAction = async (action, messageRef, fallbackMessage) => {
     if (!action?.target) {
       messageRef.value = fallbackMessage
       return false
     }
 
     const isMiniProgramAction = String(action.type ?? '').startsWith('mini_program')
+    let miniProgramFallbackShown = false
+    const showMiniProgramFallbackForAction = () => {
+      if (miniProgramFallbackShown) {
+        return
+      }
+      miniProgramFallbackShown = true
+      messageRef.value = ''
+      openMiniProgramFallback(action.target, action.type)
+    }
+
     if (action.type === 'mini_program_coupon_package') {
-      const redirected = goMiniProgramCouponPage(action.target)
+      const redirected = await goMiniProgramCouponPage(action.target, {
+        fail: showMiniProgramFallbackForAction,
+      })
+      if (!redirected) {
+        showMiniProgramFallbackForAction()
+        return true
+      }
+
       messageRef.value = redirected ? '' : fallbackMessage || CLAIM_SUCCESS_COUPON_FALLBACK_MESSAGE
       return redirected
     }
 
-    const miniProgramBridge = typeof window !== 'undefined' ? window.wx?.miniProgram : undefined
-    if (isMiniProgramAction && typeof miniProgramBridge?.navigateTo === 'function') {
-      miniProgramBridge.navigateTo({ url: action.target })
-      messageRef.value = ''
-      return true
-    }
-
     if (isMiniProgramAction) {
-      messageRef.value = `\u6d4b\u8bd5\u73af\u5883\u672a\u68c0\u6d4b\u5230\u5c0f\u7a0b\u5e8f\u6865\uff0c\u76ee\u6807\uff1a${action.target}`
+      const redirected = await goMiniProgramCouponPage(action.target, {
+        fail: showMiniProgramFallbackForAction,
+      })
+      if (!redirected) {
+        showMiniProgramFallbackForAction()
+      }
       return true
     }
 
@@ -1729,14 +1806,14 @@ export function useP1Activity(options = {}) {
     return true
   }
 
-  const useP5Benefit = () => {
+  const useP5Benefit = async () => {
     if (p5UseStatus.value === 'redirecting' || p5Result.value.reward.couponStatus !== 'unused') {
       return
     }
 
     trackEvent('use_benefit_click')
 
-    if (backendEnabled && runConfiguredAction(p5Result.value.action, p5UseMessage, '使用入口暂未开放，请稍后再试。')) {
+    if (backendEnabled && (await runConfiguredAction(p5Result.value.action, p5UseMessage, '使用入口暂未开放，请稍后再试。'))) {
       trackEvent('use_benefit_redirect_success')
       return
     }
@@ -1831,7 +1908,7 @@ export function useP1Activity(options = {}) {
     goHome()
   }
 
-  const useP6Reward = (reward) => {
+  const useP6Reward = async (reward) => {
     if (p6ActionStatus.value === 'redirecting' || !reward) {
       return
     }
@@ -1867,7 +1944,7 @@ export function useP1Activity(options = {}) {
       return
     }
 
-    if (backendEnabled && runConfiguredAction(reward.action, p6ActionMessage, '已领取，请前往小程序我的优惠券查看。')) {
+    if (backendEnabled && (await runConfiguredAction(reward.action, p6ActionMessage, '已领取，请前往小程序我的优惠券查看。'))) {
       trackEvent('reward_use_redirect_success')
       return
     }
@@ -1876,7 +1953,7 @@ export function useP1Activity(options = {}) {
     trackEvent('reward_use_redirect_fail')
   }
 
-  const openP6Product = () => {
+  const openP6Product = async () => {
     if (p6ActionStatus.value === 'redirecting') {
       return
     }
@@ -1884,7 +1961,7 @@ export function useP1Activity(options = {}) {
     trackEvent('product_recommend_click')
     if (
       backendEnabled &&
-      runConfiguredAction(p6Center.value.product_recommend?.action, p6ActionMessage, '商品详情入口暂未开放，请稍后再试。')
+      (await runConfiguredAction(p6Center.value.product_recommend?.action, p6ActionMessage, '商品详情入口暂未开放，请稍后再试。'))
     ) {
       trackEvent('product_recommend_redirect_success')
       return
@@ -2016,8 +2093,12 @@ export function useP1Activity(options = {}) {
     showDrawAnimation,
     drawAnimationStatus,
     showShareGuide,
+    showMiniProgramFallback,
     showP5ClaimSuccess,
     tipMessage,
+    miniProgramFallbackMessage,
+    miniProgramFallbackTarget,
+    closeMiniProgramFallback,
     trackP7QrcodeClick,
     trackP7QrcodeLoadFail,
     trackP7ScrollToBottom,

@@ -122,8 +122,12 @@ const {
   sessionToken,
   showDrawAnimation,
   showShareGuide,
+  showMiniProgramFallback,
   showP5ClaimSuccess,
+  miniProgramFallbackMessage,
+  miniProgramFallbackTarget,
   tipMessage,
+  closeMiniProgramFallback,
   trackP7QrcodeClick,
   trackP7QrcodeLoadFail,
   trackP7ScrollToBottom,
@@ -149,6 +153,9 @@ const p6Asset = (name) => `${import.meta.env.BASE_URL}assets/p6/${name}`
 const p7Asset = (name) => `${import.meta.env.BASE_URL}assets/p7/${name}`
 const p8Asset = (name) => `${import.meta.env.BASE_URL}assets/p8/${name}`
 const shareAsset = (name) => `${import.meta.env.BASE_URL}assets/share/${name}`
+const miniProgramFallbackQrcodeSrc = computed(
+  () => import.meta.env.VITE_MINI_PROGRAM_QRCODE_URL || shareAsset('mini_program_qrcode.jpg'),
+)
 const webpName = (name) => String(name || '').replace(/\.(png|jpe?g)$/i, '.webp')
 const optimizeLocalAssetUrl = (value) => {
   if (!value || /^https?:\/\//i.test(value) || /qrcode/i.test(value)) {
@@ -1719,6 +1726,44 @@ onBeforeUnmount(() => {
 
         <p v-if="p5UseMessage" class="p5-use-tip" role="status">{{ p5UseMessage }}</p>
       </form>
+    </section>
+  </div>
+
+  <div
+    v-if="showMiniProgramFallback"
+    class="modal-mask mini-program-fallback-mask"
+    role="presentation"
+    @click.self="closeMiniProgramFallback"
+  >
+    <section
+      class="mini-program-fallback-dialog"
+      data-testid="mini-program-fallback-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="mini-program-fallback-title"
+    >
+      <button
+        class="p2-poster-dismiss mini-program-fallback-close"
+        data-testid="mini-program-fallback-close"
+        type="button"
+        aria-label="关闭"
+        @click="closeMiniProgramFallback"
+      >
+        <span class="sr-only">关闭</span>
+      </button>
+      <h2 id="mini-program-fallback-title" data-testid="mini-program-fallback-tip">
+        {{ miniProgramFallbackMessage }}
+      </h2>
+      <img
+        class="mini-program-fallback-qrcode"
+        data-testid="mini-program-fallback-qrcode"
+        :src="miniProgramFallbackQrcodeSrc"
+        alt="小程序二维码"
+        loading="lazy"
+        decoding="async"
+      />
+      <p>使用微信扫码后进入小程序查看优惠券</p>
+      <span v-if="miniProgramFallbackTarget" class="sr-only">{{ miniProgramFallbackTarget }}</span>
     </section>
   </div>
 

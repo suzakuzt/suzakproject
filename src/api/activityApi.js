@@ -2,6 +2,18 @@ const DEFAULT_API_BASE_URL = ''
 
 const getApiBaseUrl = () => import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE_URL
 
+export class ActivityApiError extends Error {
+  constructor(message, { status, payload, bodyText, url, method } = {}) {
+    super(message)
+    this.name = 'ActivityApiError'
+    this.status = status
+    this.payload = payload
+    this.bodyText = bodyText
+    this.url = url
+    this.method = method
+  }
+}
+
 const emitApiLog = (entry) => {
   if (!import.meta.env.DEV || typeof window === 'undefined') {
     return
@@ -66,7 +78,20 @@ const request = async (path, { method = 'GET', params, body } = {}) => {
 
   if (!response.ok) {
     const detail = await response.text()
-    throw new Error(detail || `Activity API request failed: ${response.status}`)
+    let payload
+    try {
+      payload = detail ? JSON.parse(detail) : undefined
+    } catch {
+      payload = undefined
+    }
+    const message = payload?.detail || payload?.message || detail || `Activity API request failed: ${response.status}`
+    throw new ActivityApiError(message, {
+      status: response.status,
+      payload,
+      bodyText: detail,
+      url: url.href,
+      method,
+    })
   }
 
   return response.json()
