@@ -731,8 +731,15 @@ const getClaimErrorMessage = (error) => {
 
   return rawMessage
 }
-const isClaimIssueFallbackError = (error) =>
-  Number(error?.status ?? error?.statusCode ?? error?.response?.status) === CLAIM_ISSUE_FALLBACK_STATUS
+const isClaimIssueFallbackError = (error) => {
+  const status = Number(error?.status ?? error?.statusCode ?? error?.response?.status)
+  if (status !== CLAIM_ISSUE_FALLBACK_STATUS) {
+    return false
+  }
+
+  const message = String(error?.message || error?.payload?.message || error?.payload?.detail || '')
+  return message.includes('发券失败')
+}
 const maskMobile = (mobile = '') => `${mobile.slice(0, 3)}****${mobile.slice(-4)}`
 
 const syncBrowserRoute = (page, { replace = false, preserveSearch = false } = {}) => {

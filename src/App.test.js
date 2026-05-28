@@ -1039,6 +1039,34 @@ describe('P1 activity home', () => {
     expect(wrapper.text()).toContain('手机号已领取过')
   })
 
+  it('does not use the 502 issue fallback for non-issuing errors', async () => {
+    const createSession = vi.fn().mockResolvedValue({ session_token: 'sess_test' })
+    const configError = new Error('发券配置缺失，请稍后重试')
+    configError.status = 502
+    const claimBenefit = vi.fn().mockRejectedValue(configError)
+    const wrapper = mountResult({
+      apiClient: {
+        createSession,
+        claimBenefit,
+        trackEvent: vi.fn().mockResolvedValue({}),
+      },
+      initialP4Detail: {
+        benefit: {
+          rewardCode: 'coupon_10',
+        },
+      },
+    })
+
+    await wrapper.get('[data-testid="p2-claim-benefit"]').trigger('click')
+    await wrapper.get('[data-testid="p5-mobile-input"]').setValue('13800138000')
+    await wrapper.get('[data-testid="p5-submit-claim"]').trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="mini-program-fallback-dialog"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="p5-mobile-claim-popup"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('发券配置缺失，请稍后重试')
+  })
+
   it('exposes API response status when claim requests fail', async () => {
     const originalFetch = globalThis.fetch
     globalThis.fetch = vi.fn().mockResolvedValue({
