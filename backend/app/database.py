@@ -8,6 +8,16 @@ from .local_env import load_local_env
 
 
 SUPPORTED_DATABASE_ENGINES = {"sqlite", "mysql"}
+DEFAULT_SQLITE_BOOTSTRAP_SCRIPTS = (
+    "001_init_activity_tables.sql",
+    "002_seed_basic_mock_config.sql",
+    "003_optimize_activity_tables.sql",
+    "004_allow_duplicate_reward_claims_per_draw.sql",
+    "006_add_coupon_issue_config.sql",
+    "007_add_grand_prize_draw_config.sql",
+    "008_add_grand_prize_lottery_suffix.sql",
+    "009_add_grand_prize_draw_time.sql",
+)
 
 
 class MysqlConnection:
@@ -36,7 +46,9 @@ def default_database_path() -> Path:
     if configured_path:
         return Path(configured_path).expanduser().resolve()
 
-    return Path(__file__).resolve().parents[1] / "data" / "gaokao_h5_dev.sqlite3"
+    default_path = Path(__file__).resolve().parents[1] / "data" / "gaokao_h5_dev.sqlite3"
+    _ensure_default_sqlite_database(default_path)
+    return default_path
 
 
 def get_database_engine() -> str:
@@ -97,10 +109,27 @@ def connect(database_path: str | Path | None = None) -> Any:
 
 def _connect_sqlite(database_path: str | Path | None = None) -> sqlite3.Connection:
     db_path = Path(database_path) if database_path is not None else default_database_path()
+    if database_path is None:
+        _ensure_default_sqlite_database(db_path)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
+
+
+def _ensure_default_sqlite_database(db_path: Path) -> None:
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with sqlite3.connect(db_path) as conn:
+        has_activity_schema = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'activity_config'"
+        ).fetchone()
+        if has_activity_schema:
+            return
+
+        sqlite_dir = Path(__file__).resolve().parents[2] / "database" / "sqlite"
+        for script_name in DEFAULT_SQLITE_BOOTSTRAP_SCRIPTS:
+            conn.executescript((sqlite_dir / script_name).read_text(encoding="utf-8"))
 
 
 def _connect_mysql() -> MysqlConnection:

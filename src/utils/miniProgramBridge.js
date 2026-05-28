@@ -42,12 +42,30 @@ const isMiniProgramWebView = () =>
     finish(typeof window !== 'undefined' && window.__wxjs_environment === 'miniprogram')
   })
 
+function postMiniProgramNavigateMessage(targetUrl) {
+  const miniProgramBridge = getMiniProgramBridge()
+
+  if (!targetUrl || typeof miniProgramBridge?.postMessage !== 'function') {
+    return false
+  }
+
+  miniProgramBridge.postMessage({
+    data: {
+      type: 'navigateTo',
+      url: targetUrl,
+    },
+  })
+  return true
+}
+
 export async function goMiniProgramCouponPage(targetUrl = MINI_PROGRAM_COUPON_PAGE, options = {}) {
   const miniProgramBridge = getMiniProgramBridge()
 
   if (!targetUrl || typeof miniProgramBridge?.navigateTo !== 'function') {
     return false
   }
+
+  postMiniProgramNavigateMessage(targetUrl)
 
   if (!(await isMiniProgramWebView())) {
     return false
@@ -80,6 +98,8 @@ export async function goMiniProgramPosterSavePage(posterUrl) {
   if (!targetUrl || typeof miniProgramBridge?.navigateTo !== 'function') {
     return false
   }
+
+  postMiniProgramNavigateMessage(targetUrl)
 
   if (!(await isMiniProgramWebView())) {
     return false
