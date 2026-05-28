@@ -3,8 +3,10 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { defineComponent } from 'vue'
 import App from './App.vue'
 import { activityApi } from './api/activityApi'
+import { useP1Activity } from './composables/useP1Activity'
 import {
   MINI_PROGRAM_COUPON_PAGE,
   MINI_PROGRAM_POSTER_SAVE_PAGE,
@@ -39,6 +41,18 @@ const mountResult = (props = {}) => {
   window.history.replaceState({}, '', '/activity/result')
 
   return mount(App, { props: { initialPage: 'p2', ...props } })
+}
+const mountActivityState = (options = {}) => {
+  let activity
+  const Harness = defineComponent({
+    setup() {
+      activity = useP1Activity(options)
+      return () => null
+    },
+  })
+
+  mount(Harness)
+  return activity
 }
 const readSource = (relativePath) => readFileSync(resolve(process.cwd(), relativePath), 'utf8')
 const readBinary = (relativePath) => readFileSync(resolve(process.cwd(), relativePath))
@@ -969,6 +983,52 @@ describe('P1 activity home', () => {
     expect(wrapper.get('[data-testid="mini-program-fallback-dialog"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="mini-program-fallback-tip"]').text()).toBe('领取成功，扫码-进入小程序')
     expect(wrapper.find('[data-testid="p5-mobile-claim-popup"]').exists()).toBe(false)
+  })
+
+  it('marks the matching P6 coupon usable after a 502 issue fallback claim', async () => {
+    window.wx = {
+      miniProgram: {},
+    }
+    const createSession = vi.fn().mockResolvedValue({ session_token: 'sess_test' })
+    const issueError = new Error('发券失败，请稍后重试')
+    issueError.status = 502
+    const claimBenefit = vi.fn().mockRejectedValue(issueError)
+    const activity = mountActivityState({
+      apiClient: {
+        createSession,
+        claimBenefit,
+        trackEvent: vi.fn().mockResolvedValue({}),
+      },
+      initialPage: 'p2',
+      initialP4Detail: {
+        benefit: {
+          rewardCode: 'coupon_30',
+          reward: {
+            couponId: 'coupon_30',
+            reward_code: 'coupon_30',
+            amountText: '30',
+            couponName: '无门槛30元券',
+          },
+        },
+      },
+    })
+
+    await activity.openP2Benefit()
+    activity.p5Mobile.value = '13040695156'
+    await activity.submitP5MobileClaim()
+    await flushPromises()
+
+    const reward = activity.p6Center.value.display_rewards.find((item) => item.reward_code === 'coupon_30')
+
+    expect(reward.status).toBe('unused')
+    expect(reward.button_text).toBe('\u53bb\u4f7f\u7528')
+
+    activity.closeMiniProgramFallback()
+    await activity.useP6Reward(reward)
+    await flushPromises()
+
+    expect(activity.p6ActionMessage.value).not.toContain('璇峰厛瀹屾垚鎶界')
+    expect(activity.showMiniProgramFallback.value).toBe(true)
   })
 
   it('redirects to mini-program without QR fallback when a 502 issue fallback can navigate', async () => {

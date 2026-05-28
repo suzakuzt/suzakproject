@@ -1609,8 +1609,46 @@ export function useP1Activity(options = {}) {
     return mobile
   }
 
+  const syncP6RewardClaimState = () => {
+    const rewardCode = getVisibleP5RewardCode()
+    if (!P6_FIXED_REWARD_CODE_SET.has(rewardCode)) {
+      return
+    }
+
+    const existingDisplay = (p6Center.value.display_rewards ?? []).find((reward) => getP6RewardCode(reward) === rewardCode)
+    const existingClaimed = (p6Center.value.claimed_rewards ?? []).find((reward) => getP6RewardCode(reward) === rewardCode)
+    const p5Reward = p5Result.value.reward ?? {}
+    const p5Action = p5Result.value.action ?? {}
+    const claimedReward = normalizeP6Reward({
+      ...existingDisplay,
+      ...existingClaimed,
+      reward_code: rewardCode,
+      reward_id: existingClaimed?.reward_id || existingDisplay?.reward_id || `${rewardCode}_claimed`,
+      reward_type: existingDisplay?.reward_type || existingClaimed?.reward_type || p5Reward.reward_type || 'coupon',
+      title: existingDisplay?.title || p5Reward.title || p5Reward.amountText || '',
+      unit_text: existingDisplay?.unit_text || p5Reward.unit_text || p5Reward.unitText || '',
+      desc: existingDisplay?.desc || p5Reward.desc || p5Reward.couponName || '',
+      status: 'unused',
+      button_text: P6_REWARD_USE_TEXT,
+      image_url: existingDisplay?.image_url || existingClaimed?.image_url || p5Reward.image_url || p5Reward.imageUrl || '',
+      action: {
+        type: p5Action.type || existingClaimed?.action?.type || existingDisplay?.action?.type || 'mini_program_coupon_package',
+        target: p5Action.target || existingClaimed?.action?.target || existingDisplay?.action?.target || MINI_PROGRAM_COUPON_PAGE,
+      },
+    })
+
+    p6Center.value = normalizeP6Center({
+      ...p6Center.value,
+      claimed_rewards: [
+        claimedReward,
+        ...(p6Center.value.claimed_rewards ?? []).filter((reward) => getP6RewardCode(reward) !== rewardCode),
+      ],
+    })
+  }
+
   const markP5ClaimSuccess = (result, mobile) => {
     p5Result.value = normalizeP5Result(result)
+    syncP6RewardClaimState()
     p4ClaimStatus.value = 'claimed'
     p5ClaimStatus.value = 'claimed'
     clearP4ClaimMessage()
