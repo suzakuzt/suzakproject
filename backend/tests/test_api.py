@@ -18,9 +18,9 @@ class FakeHermesCouponClient:
         self.issued_requests = []
         self.issue_error = None
 
-    def issue_coupon(self, mobile, issue_config=None):
+    def issue_coupon(self, mobile, issue_config=None, *, trace_id=""):
         self.issued_mobiles.append(mobile)
-        self.issued_requests.append({"mobile": mobile, "issue_config": issue_config})
+        self.issued_requests.append({"mobile": mobile, "issue_config": issue_config, "trace_id": trace_id})
         if self.issue_error:
             raise self.issue_error
         return {

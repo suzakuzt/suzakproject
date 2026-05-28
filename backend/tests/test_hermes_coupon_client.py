@@ -299,5 +299,37 @@ class HermesCouponClientTests(unittest.TestCase):
             client.issue_coupon("13040695156")
 
 
+    def test_issue_coupon_logs_manual_import_request_and_failure_context(self):
+        _, public_key = _build_public_key_pair()
+        transport = FakeHermesTransport(
+            [
+                {"code": "0", "success": True, "data": {"publicKey": public_key, "version": "v1:"}},
+                {"code": "0", "success": True, "ut": "ut_token_1"},
+                {
+                    "code": "0",
+                    "success": True,
+                    "message": "鎴愬姛",
+                    "data": {"id": 2605250000000031, "successNum": 0, "failNum": 1},
+                },
+            ]
+        )
+        client = HermesCouponClient(config=_build_config(), transport=transport)
+
+        with self.assertLogs("backend.services.hermes_coupon_client", level="INFO") as logs:
+            with self.assertRaises(HermesCouponError):
+                client.issue_coupon("13040695156", _build_issue_config(), trace_id="trace123")
+
+        output = "\n".join(logs.output)
+        self.assertIn("Hermes manualImport request", output)
+        self.assertIn("Hermes manualImport response", output)
+        self.assertIn("Hermes coupon issue failed", output)
+        self.assertIn("trace_id=trace123", output)
+        self.assertIn("reward_code=coupon_20", output)
+        self.assertIn("hermes_id=2605150000000212", output)
+        self.assertIn("ref_id=2605150000000226", output)
+        self.assertIn("task_id=2605250000000031", output)
+        self.assertIn("mobile=130****5156", output)
+
+
 if __name__ == "__main__":
     unittest.main()

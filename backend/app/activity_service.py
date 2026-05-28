@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 import secrets
 import uuid
@@ -20,6 +21,7 @@ GRAND_PRIZE_LOTTERY_MAX_ATTEMPTS = 64
 MOBILE_PATTERN = re.compile(r"^1[3-9]\d{9}$")
 P5_RANDOM_REWARD_CODES = ("coupon_10", "coupon_20", "coupon_30", "discount_9", "discount_75")
 _hermes_coupon_client: HermesCouponClient | None = None
+LOGGER = logging.getLogger(__name__)
 
 
 class ApiError(Exception):
@@ -354,6 +356,7 @@ def get_explain_detail(session_token: str, draw_id: int | None = None, result_co
 
 
 def claim_benefit(payload: dict[str, Any]) -> dict[str, Any]:
+    trace_id = str(payload.get("_trace_id") or uuid.uuid4().hex[:12])
     mobile = _normalize_mobile(payload.get("mobile"))
     with connection() as conn:
         session = _get_session(conn, payload["session_token"])
@@ -370,6 +373,18 @@ def claim_benefit(payload: dict[str, Any]) -> dict[str, Any]:
             raise ApiError(404, "reward not found")
 
         masked_mobile = _mask_mobile(mobile)
+        LOGGER.info(
+            "Benefit claim resolved trace_id=%s activity_code=%s user_id=%s session_id=%s draw_id=%s result_code=%s reward_code=%s requested_reward_code=%s mobile=%s",
+            trace_id,
+            session["activity_code"],
+            session["user_id"],
+            session["id"],
+            draw["id"],
+            draw["result_code"],
+            reward_code,
+            requested_reward_code,
+            masked_mobile,
+        )
         existing = fetch_one(
             conn,
             """
@@ -389,6 +404,15 @@ def claim_benefit(payload: dict[str, Any]) -> dict[str, Any]:
 
             issue_config = _get_coupon_issue_config(conn, session["activity_code"], reward_code)
             claim_id = int(existing["id"])
+            LOGGER.info(
+                "Benefit claim retrying coupon trace_id=%s claim_id=%s claim_no=%s reward_code=%s previous_claim_status=%s previous_coupon_issue_status=%s",
+                trace_id,
+                claim_id,
+                existing.get("claim_no"),
+                reward_code,
+                existing.get("claim_status"),
+                existing.get("coupon_issue_status"),
+            )
             cursor = conn.execute(
                 """
                 UPDATE reward_claim_record
@@ -446,6 +470,14 @@ def claim_benefit(payload: dict[str, Any]) -> dict[str, Any]:
                 )
                 claim_id = int(cursor.lastrowid)
                 conn.commit()
+                LOGGER.info(
+                    "Benefit claim record created trace_id=%s claim_id=%s claim_no=%s reward_code=%s mobile=%s",
+                    trace_id,
+                    claim_id,
+                    claim_no,
+                    reward_code,
+                    masked_mobile,
+                )
             except Exception as error:
                 if not is_integrity_error(error):
                     raise
@@ -465,8 +497,22 @@ def claim_benefit(payload: dict[str, Any]) -> dict[str, Any]:
                     raise ApiError(409, "领取处理中，请稍后查看")
                 raise
 
+        LOGGER.info(
+            "Benefit claim issuing Hermes coupon trace_id=%s claim_id=%s reward_code=%s mobile=%s config_id=%s hermes_id=%s ref_id=%s ref_type=%s start_time=%s end_time=%s face_value=%s",
+            trace_id,
+            claim_id,
+            reward_code,
+            masked_mobile,
+            issue_config.config_id,
+            issue_config.hermes_id,
+            issue_config.ref_id,
+            issue_config.ref_type,
+            issue_config.start_time,
+            issue_config.end_time,
+            issue_config.face_value,
+        )
         try:
-            issue_result = _issue_hermes_coupon(mobile, issue_config)
+            issue_result = _issue_hermes_coupon(mobile, issue_config, trace_id=trace_id)
         except ApiError as exc:
             conn.execute(
                 """
@@ -480,9 +526,25 @@ def claim_benefit(payload: dict[str, Any]) -> dict[str, Any]:
                 (exc.message[:255], claim_id),
             )
             conn.commit()
+            LOGGER.warning(
+                "Benefit claim marked failed trace_id=%s claim_id=%s reward_code=%s mobile=%s error=%s",
+                trace_id,
+                claim_id,
+                reward_code,
+                masked_mobile,
+                exc.message,
+            )
             raise
 
         external_coupon_id = _extract_hermes_task_id(issue_result)
+        LOGGER.info(
+            "Benefit claim Hermes coupon issued trace_id=%s claim_id=%s reward_code=%s mobile=%s external_coupon_id=%s",
+            trace_id,
+            claim_id,
+            reward_code,
+            masked_mobile,
+            external_coupon_id,
+        )
         conn.execute(
             """
             UPDATE reward_claim_record
@@ -1819,6 +1881,11 @@ def _get_coupon_issue_config(conn, activity_code: str, reward_code: str) -> Herm
         (activity_code, reward_code),
     )
     if not row:
+        LOGGER.warning(
+            "Hermes coupon issue config missing activity_code=%s reward_code=%s",
+            activity_code,
+            reward_code,
+        )
         raise ApiError(502, "发券配置缺失，请稍后重试")
 
     return HermesCouponIssueConfig(
@@ -1834,10 +1901,21 @@ def _get_coupon_issue_config(conn, activity_code: str, reward_code: str) -> Herm
     )
 
 
-def _issue_hermes_coupon(mobile: str, issue_config: HermesCouponIssueConfig) -> dict[str, Any]:
+def _issue_hermes_coupon(mobile: str, issue_config: HermesCouponIssueConfig, *, trace_id: str = "") -> dict[str, Any]:
     try:
-        return get_hermes_coupon_client().issue_coupon(mobile, issue_config)
+        return get_hermes_coupon_client().issue_coupon(mobile, issue_config, trace_id=trace_id)
     except HermesCouponError as exc:
+        LOGGER.exception(
+            "Hermes coupon issue exception trace_id=%s reward_code=%s mobile=%s config_id=%s hermes_id=%s ref_id=%s ref_type=%s error=%s",
+            trace_id,
+            issue_config.reward_code,
+            _mask_mobile(mobile),
+            issue_config.config_id,
+            issue_config.hermes_id,
+            issue_config.ref_id,
+            issue_config.ref_type,
+            exc,
+        )
         raise ApiError(502, "发券失败，请稍后重试") from exc
 
 

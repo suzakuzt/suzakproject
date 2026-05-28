@@ -1,5 +1,7 @@
 import hmac
+import logging
 import os
+import uuid
 from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
@@ -29,6 +31,22 @@ from .activity_service import (
 from .health import build_health_status
 from .local_env import load_local_env
 from .poster_service import resolve_poster_path, save_poster
+
+
+def _configure_logging() -> None:
+    load_local_env()
+    level_name = os.environ.get("GAOKAO_H5_LOG_LEVEL", "INFO").strip().upper() or "INFO"
+    level = getattr(logging, level_name, logging.INFO)
+    logging.basicConfig(
+        level=logging.WARNING,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+    for logger_name in ("backend", "backend.app", "backend.services"):
+        logging.getLogger(logger_name).setLevel(level)
+
+
+_configure_logging()
+LOGGER = logging.getLogger(__name__)
 
 
 app = FastAPI(
@@ -121,6 +139,22 @@ def _handle_api_error(error: ApiError):
     raise HTTPException(status_code=error.status_code, detail=error.message) from error
 
 
+def _mask_mobile(value: str | None) -> str:
+    if not value:
+        return ""
+    if len(value) < 7:
+        return "****"
+    return f"{value[:3]}****{value[-4:]}"
+
+
+def _mask_token(value: str | None) -> str:
+    if not value:
+        return ""
+    if len(value) <= 12:
+        return "****"
+    return f"{value[:8]}...{value[-4:]}"
+
+
 def _extract_bearer_token(value: str | None) -> str:
     if not value:
         return ""
@@ -191,9 +225,40 @@ def explain_detail(session_token: str = Query(...), draw_id: int | None = None, 
 
 @app.post("/api/benefit/claim")
 def benefit_claim(request: BenefitClaimRequest):
+    trace_id = uuid.uuid4().hex[:12]
+    payload = request.model_dump()
+    payload["_trace_id"] = trace_id
+    LOGGER.info(
+        "Benefit claim request trace_id=%s session_token=%s draw_id=%s reward_code=%s mobile=%s channel=%s",
+        trace_id,
+        _mask_token(request.session_token),
+        request.draw_id,
+        request.reward_code,
+        _mask_mobile(request.mobile),
+        request.claim_channel,
+    )
     try:
-        return claim_benefit(request.model_dump())
+        result = claim_benefit(payload)
+        LOGGER.info(
+            "Benefit claim success trace_id=%s claim_no=%s reward_code=%s coupon_issue_status=%s external_coupon_id=%s",
+            trace_id,
+            result.get("claim_no") or result.get("claimNo"),
+            result.get("reward", {}).get("reward_code") if isinstance(result.get("reward"), dict) else request.reward_code,
+            result.get("coupon_issue_status") or result.get("couponIssueStatus"),
+            result.get("external_coupon_id") or result.get("externalCouponId"),
+        )
+        return result
     except ApiError as error:
+        LOGGER.warning(
+            "Benefit claim failed trace_id=%s status_code=%s message=%s session_token=%s draw_id=%s reward_code=%s mobile=%s",
+            trace_id,
+            error.status_code,
+            error.message,
+            _mask_token(request.session_token),
+            request.draw_id,
+            request.reward_code,
+            _mask_mobile(request.mobile),
+        )
         if error.status_code >= 500:
             return JSONResponse(
                 status_code=error.status_code,

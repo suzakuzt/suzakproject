@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "compress:assets": "node scripts/compress-assets.mjs",
     "test": "vitest run --environment jsdom",
     "preview": "vite preview"
   },
@@ -17,6 +18,7 @@
     "@vitejs/plugin-vue": "^6.0.6",
     "@vue/test-utils": "^2.4.10",
     "jsdom": "^29.1.1",
+    "sharp": "^0.34.5",
     "vite": "^8.0.12",
     "vitest": "^4.1.6"
   }

@@ -42,6 +42,7 @@ const mountResult = (props = {}) => {
 const readSource = (relativePath) => readFileSync(resolve(process.cwd(), relativePath), 'utf8')
 const readBinary = (relativePath) => readFileSync(resolve(process.cwd(), relativePath))
 const sha256File = (relativePath) => createHash('sha256').update(readBinary(relativePath)).digest('hex').toUpperCase()
+const fileSizeKb = (relativePath) => Math.round((readBinary(relativePath).length / 1024) * 10) / 10
 
 const readPngSize = (relativePath) => {
   const buffer = readBinary(relativePath)
@@ -67,6 +68,44 @@ describe('P1 activity home', () => {
     const html = readSource('index.html')
 
     expect(html).toContain('https://res.wx.qq.com/open/js/jweixin-1.6.0.js')
+  })
+
+  it('keeps the activity share poster out of the initial home DOM and uses the optimized WebP asset', async () => {
+    const wrapper = mountHome()
+
+    expect(wrapper.find('.activity-share-poster-image').exists()).toBe(false)
+    await wrapper.get('[data-testid="share-entry"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="home-share-activity-poster"]').find('.activity-share-poster-image').attributes('src')).toContain(
+      'share_activity_poster.webp',
+    )
+  })
+
+  it('uses metadata preload for the draw animation video instead of downloading the full animation eagerly', () => {
+    const source = readSource('src/App.vue')
+
+    expect(source).not.toContain('preload="auto"')
+    expect(source).toContain('preload="metadata"')
+    expect(source).toContain('drawAnimationVideoSrc')
+  })
+
+  it('shows the home page only after first-screen core image preloading is released', () => {
+    const source = readSource('src/App.vue')
+
+    expect(source).toContain('firstScreenImages')
+    expect(source).toContain('pageReady')
+    expect(source).toContain('first-screen-loading')
+    expect(source).not.toContain('share_activity_poster.png')
+  })
+
+  it('provides a sharp-based asset compression script for oversized public images', () => {
+    const script = readSource('scripts/compress-assets.mjs')
+
+    expect(script).toContain("from 'sharp'")
+    expect(script).toContain('public/assets')
+    expect(script).toContain('500')
+    expect(script).toContain('webp')
   })
 
   it('navigates to the mini-program coupon page only when the web-view bridge exists', () => {
@@ -181,10 +220,10 @@ describe('P1 activity home', () => {
     const wrapper = mountHome()
     const html = wrapper.html()
 
-    expect(html).toContain('bg_rank_success.jpg')
-    expect(html).toContain('element_lottery_box.png')
-    expect(html).toContain('btn_draw_now.png')
-    expect(html).toContain('btn_activity_rules.png')
+    expect(html).toContain('bg_rank_success.webp')
+    expect(html).toContain('element_lottery_box.webp')
+    expect(html).toContain('btn_draw_now.webp')
+    expect(html).toContain('btn_activity_rules.webp')
     expect(html).toContain('lottery-shadow')
     expect(html).not.toContain('element_lottery_shadow.png')
     expect(html).not.toContain('home-bg-p1.png')
@@ -214,7 +253,7 @@ describe('P1 activity home', () => {
     const rewards = mount(App, { props: { initialPage: 'p6' } })
 
     const logo = home.get('[data-testid="brand-logo-home"]')
-    expect(logo.attributes('src')).toContain('logo_prime_cuts_home.png')
+    expect(logo.attributes('src')).toContain('logo_prime_cuts_home.webp')
     expect(logo.attributes('alt')).toBe('Prime Cuts 璞莱牧')
     expect(home.find('[data-testid="brand-wordmark-home"]').exists()).toBe(false)
     expect(readPngSize('public/assets/home/logo_prime_cuts_home.png')).toEqual({
@@ -242,10 +281,7 @@ describe('P1 activity home', () => {
       width: 1105,
       height: 657,
     })
-    expect(readPngSize('public/assets/p4/product_ribeye_steak.png')).toEqual({
-      width: 1236,
-      height: 1204,
-    })
+    expect(fileSizeKb('public/assets/p4/product_ribeye_steak.webp')).toBeLessThan(500)
     expect(readPngSize('public/assets/p4/product_sirloin_steak.png')).toEqual({
       width: 1206,
       height: 699,
@@ -360,11 +396,11 @@ describe('P1 activity home', () => {
     const html = wrapper.html()
 
     expect(wrapper.get('[data-testid="p2-combined-card"]').exists()).toBe(true)
-    expect(html).toContain('bg_ai_result_page.png')
+    expect(html).toContain('bg_ai_result_page.webp')
     expect(html).not.toContain('text_beef_super_luck_sign.png')
     expect(html).not.toContain('element_luck_tag_vertical_full.png')
-    expect(html).toContain('text_ai_result_scroll_header_double_tassel.png')
-    expect(html).toContain('text_claim_exclusive_reward_sign.png')
+    expect(html).toContain('text_ai_result_scroll_header_double_tassel.webp')
+    expect(html).toContain('text_claim_exclusive_reward_sign.webp')
     expect(wrapper.text()).toContain('过儿签')
     expect(wrapper.text()).toContain('考试期间，不要叫我真名，叫我过儿。')
     expect(wrapper.findAll('[data-testid="p2-fortune-line"]').map((line) => line.text())).toEqual([
@@ -378,7 +414,7 @@ describe('P1 activity home', () => {
     expect(wrapper.find('[data-testid="p2-right-luck"]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('LEFT_COPY')
     expect(wrapper.text()).not.toContain('RIGHT_COPY')
-    expect(wrapper.get('[data-testid="p2-product-image"]').attributes('src')).toContain('product_flat_iron_steak.png')
+    expect(wrapper.get('[data-testid="p2-product-image"]').attributes('src')).toContain('product_flat_iron_steak.webp')
     expect(wrapper.get('[data-testid="p2-ai-scroll"]').classes()).not.toContain('is-open')
     expect(wrapper.get('[data-testid="p2-ai-panel"]').text()).not.toContain('INLINE_AI_COPY')
     expect(wrapper.get('[data-testid="p2-claim-benefit"]').exists()).toBe(true)
@@ -432,11 +468,11 @@ describe('P1 activity home', () => {
 
     const poster = wrapper.get('[data-testid="p2-poster-dialog"]')
     expect(poster.find('[data-testid="p2-share-activity-poster"]').attributes('src')).toContain(
-      'share_activity_poster.png',
+      'share_activity_poster.webp',
     )
     expect(poster.find('[data-testid="p2-poster-qrcode"]').attributes('src')).toContain('qrcode_wechat_group.png')
     expect(poster.find('[data-testid="p2-product-image"]').exists()).toBe(false)
-    expect(poster.html()).not.toContain('product_flat_iron_steak.png')
+    expect(poster.html()).not.toContain('product_flat_iron_steak.webp')
     expect(poster.find('[data-testid="save-p2-poster"]').exists()).toBe(false)
     expect(poster.get('[data-testid="p2-poster-longpress-tip"]').text()).toBe('长按海报可保存/分享')
     expect(poster.get('[data-testid="close-p2-panel"]').attributes('aria-label')).toBe('关闭')
@@ -509,22 +545,19 @@ describe('P1 activity home', () => {
   it('uses the approved 2026-05-26 activity poster asset for every share entry', async () => {
     const home = mountHome()
     const result = mountResult()
-    const approvedPosterHash = 'ED85CD9997C41CA52291105C21318371FC3FA266F500B9E9B70DA8918C8F4DD0'
+    const approvedPosterHash = '62511C56BBA69EF1C74A4F5384A3774A1982739ECC346D797A7EF08AB0366E17'
 
-    expect(sha256File('public/assets/share/share_activity_poster.png')).toBe(approvedPosterHash)
-    expect(readPngSize('public/assets/share/share_activity_poster.png')).toEqual({
-      width: 941,
-      height: 1672,
-    })
+    expect(sha256File('public/assets/share/share_activity_poster.webp')).toBe(approvedPosterHash)
+    expect(fileSizeKb('public/assets/share/share_activity_poster.webp')).toBeLessThan(500)
 
     await home.get('[data-testid="share-entry"]').trigger('click')
     await result.get('[data-testid="share-poster"]').trigger('click')
 
     expect(home.get('[data-testid="home-share-activity-poster"]').find('.activity-share-poster-image').attributes('src')).toContain(
-      'share_activity_poster.png',
+      'share_activity_poster.webp',
     )
     expect(result.get('[data-testid="p2-share-activity-poster"]').attributes('src')).toContain(
-      'share_activity_poster.png',
+      'share_activity_poster.webp',
     )
   })
 
@@ -628,11 +661,11 @@ describe('P1 activity home', () => {
     }
 
     expect(renderedImages.map((src) => src.split('/').pop())).toEqual([
-      'product_flat_iron_steak.png',
-      'product_ribeye_steak.png',
-      'product_sirloin_steak.png',
-      'product_tenderloin_steak.png',
-      'product_flat_iron_steak.png',
+      'product_flat_iron_steak.webp',
+      'product_ribeye_steak.webp',
+      'product_sirloin_steak.webp',
+      'product_tenderloin_steak.webp',
+      'product_flat_iron_steak.webp',
     ])
   })
 
@@ -687,7 +720,7 @@ describe('P1 activity home', () => {
     expect(css).toMatch(/\.p2-product-hero img\s*{[^}]*transform:\s*rotate\(-4deg\)\s*scale\(0\.92\);/s)
     expect(css).toMatch(/\.p2-ai-panel\s*{[^}]*top:\s*36\.5%;[^}]*width:\s*76%;/s)
     expect(css).toMatch(/\.p2-scroll-head\s*{[^}]*width:\s*72%;[^}]*margin:\s*0 auto;/s)
-    expect(css).toMatch(/\.p2-scroll-body\s*{[^}]*url\("\/assets\/p4\/element_ai_result_blank_scroll_panel\.png"\)/s)
+    expect(css).toMatch(/\.p2-scroll-body\s*{[^}]*url\("\/assets\/p4\/element_ai_result_blank_scroll_panel\.webp"\)/s)
     expect(css).toMatch(/\.p2-scroll-body\s*{[^}]*width:\s*94%;[^}]*margin:\s*-16\.5%\s*auto\s*0;/s)
     expect(css).toMatch(/\.p2-ai-scroll\.is-open \.p2-scroll-body\s*{[^}]*min-height:\s*252px;[^}]*max-height:\s*292px;[^}]*padding:\s*42px\s*30px\s*46px;/s)
     expect(css).toMatch(/\.p2-ai-result\s*{[^}]*max-height:\s*200px;/s)
@@ -1135,10 +1168,10 @@ describe('P1 activity home', () => {
 
     expect(readPngSize('public/assets/p8/result_grand_prize_won.png')).toEqual({ width: 1254, height: 1254 })
     expect(readPngSize('public/assets/p8/result_grand_prize_not_won.png')).toEqual({ width: 1254, height: 1254 })
-    expect(won.get('[data-testid="p8-publicity-result"]').attributes('src')).toContain('result_grand_prize_won.png')
+    expect(won.get('[data-testid="p8-publicity-result"]').attributes('src')).toContain('result_grand_prize_won.webp')
     expect(won.get('[data-testid="p8-publicity-result"]').attributes('alt')).toBe('恭喜中奖')
     expect(lost.get('[data-testid="p8-publicity-result"]').attributes('src')).toContain(
-      'result_grand_prize_not_won.png',
+      'result_grand_prize_not_won.webp',
     )
     expect(lost.get('[data-testid="p8-publicity-result"]').attributes('alt')).toBe('未中奖')
     expect(pending.find('[data-testid="p8-publicity-result"]').exists()).toBe(false)
@@ -1173,7 +1206,7 @@ describe('P1 activity home', () => {
     expect(statusCopy.text()).toContain('2026-06-18 10:00')
     expect(statusCopy.text()).toContain('GP20260526000024')
     expect(wrapper.get('[data-testid="p8-publicity-result"]').attributes('src')).toContain(
-      'result_grand_prize_won.png',
+      'result_grand_prize_won.webp',
     )
     expect(statusCopy.classes()).toContain('is-winner')
     expect(wrapper.get('.p8-status-value').text()).toBe('已开奖')
@@ -1442,7 +1475,7 @@ describe('P1 activity home', () => {
     expect(wrapper.find('[data-testid="p8-qrcode"]').exists()).toBe(true)
     expect(wrapper.get('.p8-status-value').text()).toBe('已开奖')
     expect(wrapper.get('[data-testid="p8-publicity-result"]').attributes('src')).toContain(
-      'result_grand_prize_won.png',
+      'result_grand_prize_won.webp',
     )
     expect(wrapper.find('.p8-publicity-desc').exists()).toBe(false)
   })
@@ -1524,7 +1557,7 @@ describe('P1 activity home', () => {
     await wrapper.get('[data-testid="share-entry"]').trigger('click')
     expect(wrapper.text()).toContain('分享引导')
     expect(wrapper.get('[data-testid="home-share-activity-poster"]').find('.activity-share-poster-image').attributes('src')).toContain(
-      'share_activity_poster.png',
+      'share_activity_poster.webp',
     )
     expect(wrapper.get('[data-testid="home-share-qrcode"]').attributes('src')).toContain('qrcode_wechat_group.png')
     expect(wrapper.find('[data-testid="save-home-share-poster"]').exists()).toBe(false)

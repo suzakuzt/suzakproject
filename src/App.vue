@@ -142,7 +142,6 @@ const {
 
 const chanceText = computed(() => `我的摇签机会 ${drawChance.value}次`)
 const homeAsset = (name) => `${import.meta.env.BASE_URL}assets/home/${name}`
-const drawAnimationWebmSrc = homeAsset('CQ2-transparent-3s.webm')
 const p2Asset = (name) => `${import.meta.env.BASE_URL}assets/p2/${name}`
 const p4Asset = (name) => `${import.meta.env.BASE_URL}assets/p4/${name}`
 const p5Asset = (name) => `${import.meta.env.BASE_URL}assets/p5/${name}`
@@ -150,7 +149,65 @@ const p6Asset = (name) => `${import.meta.env.BASE_URL}assets/p6/${name}`
 const p7Asset = (name) => `${import.meta.env.BASE_URL}assets/p7/${name}`
 const p8Asset = (name) => `${import.meta.env.BASE_URL}assets/p8/${name}`
 const shareAsset = (name) => `${import.meta.env.BASE_URL}assets/share/${name}`
-const activitySharePosterSrc = shareAsset('share_activity_poster.png')
+const webpName = (name) => String(name || '').replace(/\.(png|jpe?g)$/i, '.webp')
+const optimizeLocalAssetUrl = (value) => {
+  if (!value || /^https?:\/\//i.test(value) || /qrcode/i.test(value)) {
+    return value
+  }
+
+  return value.replace(/\.(png|jpe?g)(\?.*)?$/i, '.webp$2')
+}
+const localImageAsset = (asset, name) => asset(webpName(name))
+const homeImageAsset = (name) => localImageAsset(homeAsset, name)
+const p4ImageAsset = (name) => localImageAsset(p4Asset, name)
+const p5ImageAsset = (name) => localImageAsset(p5Asset, name)
+const p6ImageAsset = (name) => localImageAsset(p6Asset, name)
+const p7ImageAsset = (name) => localImageAsset(p7Asset, name)
+const p8ImageAsset = (name) => localImageAsset(p8Asset, name)
+const activitySharePosterSrc = ref('')
+const ensureActivitySharePosterSrc = () => {
+  if (!activitySharePosterSrc.value) {
+    activitySharePosterSrc.value = shareAsset('share_activity_poster.webp')
+  }
+
+  return activitySharePosterSrc.value
+}
+const drawAnimationVideoSrc = computed(() => (showDrawAnimation.value ? homeAsset('CQ2-transparent-3s.webm') : ''))
+const FIRST_SCREEN_TIMEOUT_MS = import.meta.env.MODE === 'test' ? 0 : 4000
+const firstScreenImages = [
+  homeImageAsset('bg_rank_success.jpg'),
+  homeImageAsset('logo_prime_cuts_home.png'),
+  homeImageAsset('element_lottery_box.png'),
+  homeImageAsset('btn_draw_now.png'),
+  p6ImageAsset('btn_activity_rules.png'),
+]
+const pageReady = ref(currentPage.value !== 'home')
+const isHomeFirstScreenLoading = computed(() => currentPage.value === 'home' && !pageReady.value)
+const preloadImage = (src) =>
+  new Promise((resolve) => {
+    if (!src || typeof Image === 'undefined') {
+      resolve()
+      return
+    }
+
+    const image = new Image()
+    image.decoding = 'async'
+    image.onload = () => resolve()
+    image.onerror = () => resolve()
+    image.src = src
+  })
+const releaseFirstScreen = async () => {
+  if (currentPage.value !== 'home' || pageReady.value) {
+    pageReady.value = true
+    return
+  }
+
+  await Promise.race([
+    Promise.all(firstScreenImages.map(preloadImage)),
+    new Promise((resolve) => window.setTimeout(resolve, FIRST_SCREEN_TIMEOUT_MS)),
+  ])
+  pageReady.value = true
+}
 const P5_FALLBACK_COUPON_IMAGE = 'element_coupon_20yuan_card.png'
 const HOME_BARRAGE_VISIBLE_ROWS = 3
 const HOME_BARRAGE_DURATION = '12s'
@@ -186,7 +243,7 @@ const homeBarrageTrackStyle = {
   '--barrage-duration': HOME_BARRAGE_DURATION,
 }
 const stageStyle = computed(() => ({
-  backgroundImage: `url(${homeAsset('bg_rank_success.jpg')})`,
+  backgroundImage: `url(${homeImageAsset('bg_rank_success.jpg')})`,
 }))
 const playDrawAnimation = (event) => {
   event.currentTarget?.play?.().catch(() => {})
@@ -209,19 +266,19 @@ const canUseTransparentDrawVideo = computed(() => {
   )
 })
 const p2StageStyle = computed(() => ({
-  backgroundImage: `url(${p4Asset('bg_ai_result_page.png')})`,
+  backgroundImage: `url(${p4ImageAsset('bg_ai_result_page.png')})`,
 }))
 const p4StageStyle = computed(() => ({
-  backgroundImage: `url(${p4Asset('bg_ai_result_page.png')})`,
+  backgroundImage: `url(${p4ImageAsset('bg_ai_result_page.png')})`,
 }))
 const p6StageStyle = computed(() => ({
-  backgroundImage: `url(${p6Asset('bg_exam_progress_page.jpg')})`,
+  backgroundImage: `url(${p6ImageAsset('bg_exam_progress_page.jpg')})`,
 }))
 const p7StageStyle = computed(() => ({
-  backgroundImage: `url(${p7Asset('bg_activity_rules_page.png')})`,
+  backgroundImage: `url(${p7ImageAsset('bg_activity_rules_page.png')})`,
 }))
 const p8StageStyle = computed(() => ({
-  backgroundImage: `url(${p8Asset('bg_checkin_reward_result_page.png')})`,
+  backgroundImage: `url(${p8ImageAsset('bg_checkin_reward_result_page.png')})`,
 }))
 const p2SignTag = computed(() => `${p2Result.value.signType} 路 ${p2Result.value.signLevel}`)
 const p2FortuneHeadline = computed(() => {
@@ -313,23 +370,31 @@ let runtimeMonitor
 const p4ProductImageFailed = ref(false)
 const resolveP4ProductImage = (image) => {
   if (!image || p4ProductImageFailed.value) {
-    return p4Asset('product_flat_iron_steak.png')
+    return p4ImageAsset('product_flat_iron_steak.png')
   }
 
-  if (image.startsWith('http') || image.startsWith('/')) {
+  if (image.startsWith('http')) {
     return image
   }
 
-  return p4Asset(image)
+  if (image.startsWith('/')) {
+    return optimizeLocalAssetUrl(image)
+  }
+
+  return p4ImageAsset(image)
 }
 const p4ProductImageSrc = computed(() => resolveP4ProductImage(p4Detail.value.product.productImage))
 const resolveP5CouponImage = (reward) => {
   const image = reward?.imageUrl ?? reward?.image_url ?? reward?.rewardImageUrl ?? reward?.reward_image_url
   if (image) {
-    return image.startsWith('http') || image.startsWith('/') ? image : p5Asset(image)
+    if (image.startsWith('http')) {
+      return image
+    }
+
+    return image.startsWith('/') ? optimizeLocalAssetUrl(image) : p5ImageAsset(image)
   }
 
-  return p5Asset(P5_FALLBACK_COUPON_IMAGE)
+  return p5ImageAsset(P5_FALLBACK_COUPON_IMAGE)
 }
 const p5CouponImageSrc = computed(() => resolveP5CouponImage(p5Result.value.reward))
 const p4ClaimButtonText = computed(() => {
@@ -446,23 +511,31 @@ const resolveP6AssetUrl = (value) => {
     return ''
   }
 
-  if (value.startsWith('http') || value.startsWith('/')) {
+  if (value.startsWith('http')) {
     return value
   }
 
-  return p6Asset(value)
+  if (value.startsWith('/')) {
+    return optimizeLocalAssetUrl(value)
+  }
+
+  return p6ImageAsset(value)
 }
 const resolveP6RewardImage = (reward) => resolveP6AssetUrl(resolveP6RewardImageName(reward))
 const resolveP6ProductImage = (image) => {
   if (!image || p6ProductImageFailed.value) {
-    return p4Asset('product_flat_iron_steak.png')
+    return p4ImageAsset('product_flat_iron_steak.png')
   }
 
-  if (image.startsWith('http') || image.startsWith('/')) {
+  if (image.startsWith('http')) {
     return image
   }
 
-  return image.startsWith('card_') || image.startsWith('product_') ? p4Asset(image) : p6Asset(image)
+  if (image.startsWith('/')) {
+    return optimizeLocalAssetUrl(image)
+  }
+
+  return image.startsWith('card_') || image.startsWith('product_') ? p4ImageAsset(image) : p6ImageAsset(image)
 }
 const p6ProductImageSrc = computed(() => resolveP6ProductImage(p6Product.value?.image_url))
 const p7QrcodeSrc = computed(() => {
@@ -610,7 +683,7 @@ const renderActivityPosterCanvas = async () => {
 
   let activityPoster = null
   try {
-    activityPoster = await loadPosterCanvasImage(activitySharePosterSrc)
+    activityPoster = await loadPosterCanvasImage(ensureActivitySharePosterSrc())
   } catch {
     activityPoster = null
   }
@@ -701,6 +774,7 @@ const completeShareForPoster = async (shareChannel) => {
 }
 const openHomeSharePoster = () => {
   resetSharePosterQrcode()
+  ensureActivitySharePosterSrc()
   openShareGuide()
   void completeShareForPoster('home_share').then((hasTrackedQrcode) => {
     if (hasTrackedQrcode && showShareGuide.value) {
@@ -711,6 +785,7 @@ const openHomeSharePoster = () => {
 }
 const openResultSharePoster = () => {
   resetSharePosterQrcode()
+  ensureActivitySharePosterSrc()
   openP2Poster()
   void completeShareForPoster('result_share').then((hasTrackedQrcode) => {
     if (hasTrackedQrcode && p2Panel.value === 'poster') {
@@ -810,7 +885,7 @@ const p8PublicityResultSrc = computed(() => {
     return ''
   }
 
-  return p8Asset(isP8Winner.value ? 'result_grand_prize_won.png' : 'result_grand_prize_not_won.png')
+  return p8ImageAsset(isP8Winner.value ? 'result_grand_prize_won.png' : 'result_grand_prize_not_won.png')
 })
 const p8QrcodeSrc = computed(() => {
   const qrcode = p8WechatGroup.value.qrcode_url
@@ -931,11 +1006,15 @@ onMounted(async () => {
     getPageCode: () => currentPage.value,
     report: (eventName, payload) => trackEvent(eventName, payload),
   })
+  void releaseFirstScreen()
   await nextTick()
   runtimeMonitor?.checkPageNodes()
 })
 
 watch(currentPage, async () => {
+  if (currentPage.value === 'home') {
+    void releaseFirstScreen()
+  }
   await nextTick()
   runtimeMonitor?.checkPageNodes()
 })
@@ -947,17 +1026,28 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main v-if="currentPage === 'home'" class="home-page" aria-label="P1 活动首页">
+  <div v-if="isHomeFirstScreenLoading" class="first-screen-loading" role="status" aria-live="polite">
+    加载中...
+  </div>
+
+  <main
+    v-if="currentPage === 'home'"
+    class="home-page"
+    :class="{ 'is-first-screen-loading': isHomeFirstScreenLoading }"
+    aria-label="P1 活动首页"
+  >
     <section class="home-stage" :style="stageStyle">
       <img
         class="home-brand-logo"
         data-testid="brand-logo-home"
-        :src="homeAsset('logo_prime_cuts_home.png')"
+        :src="homeImageAsset('logo_prime_cuts_home.png')"
         alt="Prime Cuts 璞莱牧"
+        decoding="async"
+        fetchpriority="high"
       />
 
       <button class="rule-entry" type="button" aria-label="活动规则" @click="goRules">
-        <img :src="p6Asset('btn_activity_rules.png')" alt="" />
+        <img :src="p6ImageAsset('btn_activity_rules.png')" alt="" decoding="async" fetchpriority="high" />
         <span class="sr-only">活动规则</span>
       </button>
 
@@ -990,7 +1080,7 @@ onBeforeUnmount(() => {
         :disabled="isDrawTemporarilyDisabled"
         @click="handleDraw('tube')"
       >
-        <img :src="homeAsset('element_lottery_box.png')" alt="" />
+        <img :src="homeImageAsset('element_lottery_box.png')" alt="" decoding="async" fetchpriority="high" />
         <span class="sr-only">签筒</span>
       </button>
 
@@ -1002,7 +1092,7 @@ onBeforeUnmount(() => {
         :disabled="isDrawTemporarilyDisabled"
         @click="handleDraw('button')"
       >
-        <img :src="homeAsset('btn_draw_now.png')" alt="" />
+        <img :src="homeImageAsset('btn_draw_now.png')" alt="" decoding="async" fetchpriority="high" />
         <span class="sr-only">立即摇签</span>
       </button>
 
@@ -1033,11 +1123,17 @@ onBeforeUnmount(() => {
         >
           <span class="sr-only">关闭</span>
         </button>
-        <article v-if="!sharePosterPreviewSrc" class="p2-poster-card" data-testid="home-share-activity-poster">
+        <article
+          v-if="activitySharePosterSrc && !sharePosterPreviewSrc"
+          class="p2-poster-card"
+          data-testid="home-share-activity-poster"
+        >
           <img
             class="activity-share-poster-image"
             :src="activitySharePosterSrc"
             alt="高考抽签专属福利活动页"
+            loading="lazy"
+            decoding="async"
           />
           <span class="activity-share-poster-qrcode">
             <img
@@ -1046,6 +1142,8 @@ onBeforeUnmount(() => {
               :src="activityPosterQrcodeSrc"
               alt="活动二维码"
               :data-share-url="sharePosterUrl"
+              loading="lazy"
+              decoding="async"
               @error="handleActivityPosterQrcodeError"
             />
             <span v-else>二维码暂未配置</span>
@@ -1057,6 +1155,8 @@ onBeforeUnmount(() => {
           data-testid="home-share-generated-preview"
           :src="sharePosterPreviewSrc"
           alt="生成的分享图片"
+          loading="lazy"
+          decoding="async"
         />
         <p
           class="p2-poster-save-message"
@@ -1127,6 +1227,8 @@ onBeforeUnmount(() => {
                 data-testid="p2-product-image"
                 :src="p4ProductImageSrc"
                 alt=""
+                loading="lazy"
+                decoding="async"
                 @error="handleP4ProductImageError"
               />
               <p class="sr-only">{{ p4Detail.product.productName }}</p>
@@ -1142,7 +1244,12 @@ onBeforeUnmount(() => {
                 :aria-expanded="p4ExplainVisible ? 'true' : 'false'"
                 @click="openP2Explain"
               >
-                <img :src="p4Asset('text_ai_result_scroll_header_double_tassel.png')" alt="" />
+                <img
+                  :src="p4ImageAsset('text_ai_result_scroll_header_double_tassel.png')"
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                />
                 <span class="sr-only">AI 解签，轻触启签</span>
               </button>
 
@@ -1183,7 +1290,12 @@ onBeforeUnmount(() => {
           :disabled="p2BenefitButtonDisabled"
           @click="openP2Benefit"
         >
-          <img :src="p4Asset('text_claim_exclusive_reward_sign.png')" alt="" />
+          <img
+            :src="p4ImageAsset('text_claim_exclusive_reward_sign.png')"
+            alt=""
+            loading="lazy"
+            decoding="async"
+          />
           <span class="sr-only">{{ p4ClaimButtonText }}</span>
         </button>
 
@@ -1227,6 +1339,8 @@ onBeforeUnmount(() => {
             data-testid="p2-share-activity-poster"
             :src="activitySharePosterSrc"
             alt="高考抽签专属福利活动页"
+            loading="lazy"
+            decoding="async"
           />
           <span class="activity-share-poster-qrcode">
             <img
@@ -1235,6 +1349,8 @@ onBeforeUnmount(() => {
               :src="activityPosterQrcodeSrc"
               alt="活动二维码"
               :data-share-url="sharePosterUrl"
+              loading="lazy"
+              decoding="async"
               @error="handleActivityPosterQrcodeError"
             />
             <span v-else>二维码暂未配置</span>
@@ -1246,6 +1362,8 @@ onBeforeUnmount(() => {
           data-testid="p2-poster-generated-preview"
           :src="p2PosterPreviewSrc"
           alt="生成的分享图片"
+          loading="lazy"
+          decoding="async"
         />
         <p class="p2-poster-save-message" data-testid="p2-poster-longpress-tip" role="status">
           {{ POSTER_LONGPRESS_TIP }}
@@ -1277,7 +1395,7 @@ onBeforeUnmount(() => {
         aria-label="活动规则"
         @click="openP6Rules"
       >
-        <img :src="p6Asset('btn_activity_rules.png')" alt="" />
+        <img :src="p6ImageAsset('btn_activity_rules.png')" alt="" loading="lazy" decoding="async" />
         <span class="sr-only">{{ p6Center.rules_action.button_text }}</span>
       </button>
 
@@ -1330,6 +1448,8 @@ onBeforeUnmount(() => {
               class="p6-reward-image"
               :src="resolveP6RewardImage(reward)"
               alt=""
+              loading="lazy"
+              decoding="async"
             />
             <div v-else class="p6-gift-visual" aria-hidden="true">
               <strong>985+</strong>
@@ -1356,7 +1476,14 @@ onBeforeUnmount(() => {
 
         <section v-if="p6Product" class="p6-product-card" aria-label="精选好物推荐">
           <h2 class="sr-only">精选好物推荐</h2>
-          <img class="p6-product-image" :src="p6ProductImageSrc" alt="" @error="handleP6ProductImageError" />
+          <img
+            class="p6-product-image"
+            :src="p6ProductImageSrc"
+            alt=""
+            loading="lazy"
+            decoding="async"
+            @error="handleP6ProductImageError"
+          />
           <div class="p6-product-copy">
             <h3 class="sr-only">{{ p6Product.title }}</h3>
             <p>{{ p6Product.subtitle }}</p>
@@ -1367,7 +1494,7 @@ onBeforeUnmount(() => {
               :disabled="p6ActionStatus === 'redirecting'"
               @click="openP6Product"
             >
-              <img :src="p6Asset('btn_go_see.png')" alt="" />
+              <img :src="p6ImageAsset('btn_go_see.png')" alt="" loading="lazy" decoding="async" />
               <span class="sr-only">{{ p6Product.button_text }}</span>
             </button>
           </div>
@@ -1382,7 +1509,7 @@ onBeforeUnmount(() => {
           :disabled="p6ActionStatus === 'redirecting'"
           @click="drawAgainFromP6"
         >
-          <img :src="p6Asset('btn_draw_again.png')" alt="" />
+          <img :src="p6ImageAsset('btn_draw_again.png')" alt="" loading="lazy" decoding="async" />
           <span class="sr-only">{{ p6DrawAgainButtonText }}</span>
         </button>
       </template>
@@ -1434,6 +1561,8 @@ onBeforeUnmount(() => {
           data-testid="p8-publicity-result"
           :src="p8PublicityResultSrc"
           :alt="p8PublicityResultAlt"
+          loading="lazy"
+          decoding="async"
         />
         <strong class="p8-publicity-title">{{ isP8Drawn ? p8PublicityResultAlt : p8LotteryStatus.publicity_title }}</strong>
         <p v-if="!isP8Drawn" class="p8-publicity-desc">{{ p8LotteryStatus.publicity_desc }}</p>
@@ -1447,7 +1576,14 @@ onBeforeUnmount(() => {
       </section>
 
       <div class="p8-qrcode-frame" data-testid="p8-qrcode" @click="trackP8QrcodeClick">
-        <img v-if="p8QrcodeSrc" :src="p8QrcodeSrc" alt="企微二维码" @error="handleP8QrcodeError" />
+        <img
+          v-if="p8QrcodeSrc"
+          :src="p8QrcodeSrc"
+          alt="企微二维码"
+          loading="lazy"
+          decoding="async"
+          @error="handleP8QrcodeError"
+        />
         <span v-else>企微二维码暂未配置</span>
       </div>
 
@@ -1487,7 +1623,14 @@ onBeforeUnmount(() => {
 
       <section class="p7-wechat-card" aria-label="扫码添加企微">
         <div class="p7-qrcode-frame" @click="trackP7QrcodeClick">
-          <img v-if="p7QrcodeSrc" :src="p7QrcodeSrc" alt="企微二维码" @error="handleP7QrcodeError" />
+          <img
+            v-if="p7QrcodeSrc"
+            :src="p7QrcodeSrc"
+            alt="企微二维码"
+            loading="lazy"
+            decoding="async"
+            @error="handleP7QrcodeError"
+          />
           <span v-else>二维码暂未配置</span>
         </div>
         <div class="p7-wechat-copy">
@@ -1538,7 +1681,7 @@ onBeforeUnmount(() => {
       </button>
 
       <section class="p5-coupon-card" :aria-label="p5Result.reward.couponName">
-        <img :key="p5CouponImageSrc" :src="p5CouponImageSrc" alt="" />
+        <img :key="p5CouponImageSrc" :src="p5CouponImageSrc" alt="" loading="lazy" decoding="async" />
         <span class="sr-only">
           {{ p5Result.reward.couponLabel }} {{ p5Result.reward.thresholdText }}
           {{ p5Result.reward.amountText }}{{ p5Result.reward.unitText }}
@@ -1596,7 +1739,14 @@ onBeforeUnmount(() => {
       >
         <span class="sr-only">Close QR code preview</span>
       </button>
-      <img class="p7-qrcode-preview-image" :src="p7QrcodeSrc" alt="QR code preview" @error="handleP7QrcodeError" />
+      <img
+        class="p7-qrcode-preview-image"
+        :src="p7QrcodeSrc"
+        alt="QR code preview"
+        loading="lazy"
+        decoding="async"
+        @error="handleP7QrcodeError"
+      />
     </section>
   </div>
 
@@ -1614,14 +1764,16 @@ onBeforeUnmount(() => {
         autoplay
         muted
         playsinline
-        preload="auto"
+        webkit-playsinline
+        preload="metadata"
         @canplay="playDrawAnimation"
         @ended="completeDrawAnimation"
         @error="failDrawAnimation"
       >
         <source
+          v-if="drawAnimationVideoSrc"
           data-testid="draw-animation-webm-source"
-          :src="drawAnimationWebmSrc"
+          :src="drawAnimationVideoSrc"
           type="video/webm"
         >
       </video>
@@ -1629,8 +1781,10 @@ onBeforeUnmount(() => {
         v-else
         class="draw-animation-video draw-animation-fallback"
         data-testid="draw-animation-fallback"
-        :src="homeAsset('element_lottery_box.png')"
+        :src="homeImageAsset('element_lottery_box.png')"
         alt=""
+        loading="lazy"
+        decoding="async"
         @animationend="completeDrawAnimation"
         @error="failDrawAnimation"
       >

@@ -45,6 +45,7 @@ class HermesCouponConfig:
         }
         missing = [key for key, value in required_values.items() if value in (None, "")]
         if missing:
+            LOGGER.error("Hermes portal config missing keys=%s", ",".join(missing))
             raise HermesCouponError(f"Hermes portal config missing: {', '.join(missing)}")
 
         values = {
@@ -122,8 +123,17 @@ class UrlLibHermesTransport:
         except error.HTTPError as exc:
             payload = self._read_json_response(exc.code, exc.read())
             payload["_http_status"] = exc.code
+            LOGGER.warning(
+                "Hermes portal HTTP error method=%s url=%s http_status=%s code=%s message=%s",
+                method.upper(),
+                url,
+                exc.code,
+                payload.get("code"),
+                payload.get("message") or payload.get("msg"),
+            )
             return payload
         except error.URLError as exc:
+            LOGGER.exception("Hermes portal request failed method=%s url=%s reason=%s", method.upper(), url, exc)
             raise HermesCouponError("Hermes portal request failed") from exc
 
     @staticmethod
@@ -165,9 +175,16 @@ class HermesCouponClient:
         public_key = data.get("publicKey") or payload.get("publicKey")
         version = data.get("version") or payload.get("version") or ""
         if not public_key:
+            LOGGER.warning(
+                "Hermes get_encryption failed base_url=%s code=%s message=%s",
+                self.config.base_url,
+                payload.get("code"),
+                payload.get("message") or payload.get("msg"),
+            )
             raise HermesCouponError("Hermes encryption public key missing")
 
         self._encryption = HermesEncryption(public_key=str(public_key), version=str(version))
+        LOGGER.info("Hermes get_encryption success base_url=%s version=%s", self.config.base_url, version)
         return self._encryption
 
     def rsa_encrypt(self, text: str) -> str:
@@ -184,6 +201,7 @@ class HermesCouponClient:
             self._token = None
             self._encryption = None
 
+        LOGGER.info("Hermes login request base_url=%s username=%s force=%s", self.config.base_url, mask_account(self.config.username), force)
         payload = self.transport.request_json(
             "POST",
             self._url("/ouser-web/mobileLogin/backendLogin.do"),
@@ -198,31 +216,58 @@ class HermesCouponClient:
         data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
         token = payload.get("ut") or data.get("ut")
         if not token:
+            LOGGER.warning(
+                "Hermes login failed base_url=%s username=%s code=%s message=%s http_status=%s",
+                self.config.base_url,
+                mask_account(self.config.username),
+                payload.get("code"),
+                payload.get("message") or payload.get("msg"),
+                payload.get("_http_status"),
+            )
             raise HermesCouponError("Hermes portal login failed")
 
         self._token = str(token)
+        LOGGER.info("Hermes login success base_url=%s username=%s", self.config.base_url, mask_account(self.config.username))
         return self._token
 
     def get_token(self) -> str:
         return self.login()
 
-    def manual_import(self, mobiles: list[str], issue_config: HermesCouponIssueConfig | None = None) -> dict[str, Any]:
-        return self._manual_import_with_token(mobiles, self.get_token(), self._resolve_issue_config(issue_config))
+    def manual_import(
+        self,
+        mobiles: list[str],
+        issue_config: HermesCouponIssueConfig | None = None,
+        *,
+        trace_id: str = "",
+    ) -> dict[str, Any]:
+        return self._manual_import_with_token(mobiles, self.get_token(), self._resolve_issue_config(issue_config), trace_id=trace_id)
 
-    def issue_coupon(self, mobile: str, issue_config: HermesCouponIssueConfig | None = None) -> dict[str, Any]:
+    def issue_coupon(self, mobile: str, issue_config: HermesCouponIssueConfig | None = None, *, trace_id: str = "") -> dict[str, Any]:
         resolved_issue_config = self._resolve_issue_config(issue_config)
-        payload = self.manual_import([mobile], resolved_issue_config)
+        payload = self.manual_import([mobile], resolved_issue_config, trace_id=trace_id)
         if self._is_token_invalid(payload):
+            LOGGER.warning(
+                "Hermes token invalid, retry login trace_id=%s reward_code=%s mobile=%s code=%s message=%s",
+                trace_id,
+                resolved_issue_config.reward_code,
+                mask_mobile(mobile),
+                payload.get("code"),
+                payload.get("message") or payload.get("msg"),
+            )
             self.login(force=True)
-            payload = self.manual_import([mobile], resolved_issue_config)
+            payload = self.manual_import([mobile], resolved_issue_config, trace_id=trace_id)
 
-        self._ensure_issue_success(payload, mobile)
+        self._ensure_issue_success(payload, mobile, resolved_issue_config, trace_id=trace_id)
         data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
         LOGGER.info(
-            "Hermes coupon issued task_id=%s reward_code=%s mobile=%s successNum=%s failNum=%s",
+            "Hermes coupon issued trace_id=%s task_id=%s reward_code=%s mobile=%s hermes_id=%s ref_id=%s ref_type=%s successNum=%s failNum=%s",
+            trace_id,
             data.get("id"),
             resolved_issue_config.reward_code,
             mask_mobile(mobile),
+            resolved_issue_config.hermes_id,
+            resolved_issue_config.ref_id,
+            resolved_issue_config.ref_type,
             data.get("successNum"),
             data.get("failNum"),
         )
@@ -233,26 +278,59 @@ class HermesCouponClient:
         mobiles: list[str],
         token: str,
         issue_config: HermesCouponIssueConfig,
+        *,
+        trace_id: str = "",
     ) -> dict[str, Any]:
-        return self.transport.request_json(
+        url = self._url("/api/hermes-web/generateCodeTask/manualImport")
+        request_body = {
+            "hermesTitle": issue_config.hermes_title,
+            "hermesId": issue_config.hermes_id,
+            "refId": issue_config.ref_id,
+            "refType": issue_config.ref_type,
+            "startTime": issue_config.start_time,
+            "endTime": issue_config.end_time,
+            "mobiles": mobiles,
+            "faceValue": issue_config.face_value,
+        }
+        LOGGER.info(
+            "Hermes manualImport request trace_id=%s url=%s reward_code=%s config_id=%s hermes_id=%s ref_id=%s ref_type=%s start_time=%s end_time=%s face_value=%s mobiles=%s token_set=%s",
+            trace_id,
+            url,
+            issue_config.reward_code,
+            issue_config.config_id,
+            issue_config.hermes_id,
+            issue_config.ref_id,
+            issue_config.ref_type,
+            issue_config.start_time,
+            issue_config.end_time,
+            issue_config.face_value,
+            ",".join(mask_mobile(mobile) for mobile in mobiles),
+            bool(token),
+        )
+        payload = self.transport.request_json(
             "POST",
-            self._url("/api/hermes-web/generateCodeTask/manualImport"),
+            url,
             headers={
                 "X-Token": token,
                 "Content-Type": "application/json;charset=UTF-8",
             },
-            json_body={
-                "hermesTitle": issue_config.hermes_title,
-                "hermesId": issue_config.hermes_id,
-                "refId": issue_config.ref_id,
-                "refType": issue_config.ref_type,
-                "startTime": issue_config.start_time,
-                "endTime": issue_config.end_time,
-                "mobiles": mobiles,
-                "faceValue": issue_config.face_value,
-            },
+            json_body=request_body,
             timeout=self.config.timeout_seconds,
         )
+        data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+        LOGGER.info(
+            "Hermes manualImport response trace_id=%s reward_code=%s task_id=%s code=%s success=%s message=%s successNum=%s failNum=%s http_status=%s",
+            trace_id,
+            issue_config.reward_code,
+            data.get("id"),
+            payload.get("code"),
+            payload.get("success"),
+            payload.get("message") or payload.get("msg"),
+            data.get("successNum"),
+            data.get("failNum"),
+            payload.get("_http_status"),
+        )
+        return payload
 
     def _resolve_issue_config(self, issue_config: HermesCouponIssueConfig | None = None) -> HermesCouponIssueConfig:
         if issue_config:
@@ -269,20 +347,28 @@ class HermesCouponClient:
             face_value=self.config.face_value,
         )
 
-    def _ensure_issue_success(self, payload: dict[str, Any], mobile: str) -> None:
+    def _ensure_issue_success(self, payload: dict[str, Any], mobile: str, issue_config: HermesCouponIssueConfig, *, trace_id: str = "") -> None:
         data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
         success_num = int(data.get("successNum") or 0)
         fail_num = int(data.get("failNum") or 0)
         if str(payload.get("code")) == "0" and payload.get("success") is True and success_num == 1 and fail_num == 0:
             return
 
-        LOGGER.info(
-            "Hermes coupon issue failed mobile=%s code=%s message=%s successNum=%s failNum=%s",
+        LOGGER.warning(
+            "Hermes coupon issue failed trace_id=%s mobile=%s reward_code=%s task_id=%s hermes_id=%s ref_id=%s ref_type=%s code=%s success=%s message=%s successNum=%s failNum=%s http_status=%s",
+            trace_id,
             mask_mobile(mobile),
+            issue_config.reward_code,
+            data.get("id"),
+            issue_config.hermes_id,
+            issue_config.ref_id,
+            issue_config.ref_type,
             payload.get("code"),
+            payload.get("success"),
             payload.get("message"),
             success_num,
             fail_num,
+            payload.get("_http_status"),
         )
         raise HermesCouponError("发券失败，请稍后重试")
 
@@ -319,3 +405,11 @@ def mask_mobile(mobile: str) -> str:
     if len(mobile) < 7:
         return "****"
     return f"{mobile[:3]}****{mobile[-4:]}"
+
+
+def mask_account(value: str) -> str:
+    if not value:
+        return ""
+    if len(value) <= 4:
+        return "****"
+    return f"{value[:2]}****{value[-2:]}"
